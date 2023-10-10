@@ -1,0 +1,10 @@
+[package]
+name = "Machine_Learning_5JV"
+version = "0.1.0"
+edition = "2021"
+#![allow(non_snake_case)]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = { version = "0.8.5", features = [] }
+
