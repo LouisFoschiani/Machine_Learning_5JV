@@ -2,9 +2,10 @@
 name = "Machine_Learning_5JV"
 version = "0.1.0"
 edition = "2021"
-#![allow(non_snake_case)]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rand = { version = "0.8.5", features = [] }
-
+ndarray = "0.15.3"
+ndarray-rand = "0.14.0"  # Ajoutez cette ligne
+rand = "0.8.5"
+image = "0.23"
