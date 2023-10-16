@@ -9,3 +9,5 @@ ndarray = "0.15.3"
 ndarray-rand = "0.14.0"  # Ajoutez cette ligne
 rand = "0.8.5"
 image = "0.23"
+indicatif = "0.17"
+csv = "1.1"
