@@ -1,9 +1,11 @@
 #![allow(non_snake_case)]
 
+
 use std::fs;
 use std::path::Path;
 use image::{DynamicImage, ImageError, open};
 use rand::Rng;
+
 
 #[derive(Debug)]
 pub struct ImageClassifier {
@@ -119,48 +121,42 @@ fn load_images_from_directory(directory_path: &str) -> Result<Vec<DynamicImage>,
     Ok(images)
 }
 
-fn is_valid_jpeg(image_path: &Path) -> bool {
-    use image::io::Reader;
-
-    if let Ok(reader) = Reader::open(image_path) {
-        if let Ok(_) = reader.with_guessed_format() {
-            return true;
-        }
+fn is_valid_jpeg(image: &DynamicImage) -> bool {
+    if image.to_rgb8().to_vec().is_empty() {
+        return false; // L'image est vide
     }
-    false
+    true
 }
+
+
 fn main() -> Result<(), ImageError> {
     let mut classifier = ImageClassifier::new(28, 3, 0.01);
 
     // Charger les ensembles de données
-    let data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\football")?;
-    let data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\volley")?;
-    let data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\american_football")?;
+    let _data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\football")?;
+    let _data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\volley")?;
+    let _data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\american_football")?;
 
-    // Entraînez le modèle avec les données
-    for image in data_football.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 0 pour le football).
-        classifier.backpropagate(prediction, 0, &pixels);
+    // Charger l'image de test
+    let image = open("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\ballon.jpg")?;
+
+    if is_valid_jpeg(_data_football) {
+        let image = open(Path::new(_data_football)).unwrap();
+        // Continuez à traiter l'image ici
+    } else {
+        println!("L'image n'est pas un fichier JPEG valide.");
     }
 
-    for image in data_volleyball.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 1 pour le volleyball).
-        classifier.backpropagate(prediction, 1, &pixels);
-    }
+    let prediction = classifier.forward(&image);
+    let max_value = prediction.iter().cloned().fold(f32::MIN, f32::max);
+    let max_index = prediction.iter().position(|&x| x == max_value).unwrap();
 
-    for image in data_football_americain.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 2 pour le football américain).
-        classifier.backpropagate(prediction, 2, &pixels);
-    }
+    // Backpropagation
+    let pixels = to_vec(image);
 
-    // Après l'entraînement, vous pouvez utiliser le modèle pour prédire de nouvelles images.
+    classifier.backpropagate(prediction, 0, &pixels);
+
+    println!("La classe prédite est {}", max_index);
 
     Ok(())
 }
-
