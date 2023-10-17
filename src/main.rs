@@ -1,3 +1,7 @@
+#![allow(non_snake_case)]
+
+use std::fs::File;
+use std::path::Path;
 use image::{DynamicImage, GenericImageView, ImageBuffer, open, Pixel, Rgb};
 use rand::Rng;
 
@@ -13,7 +17,7 @@ pub struct ImageClassifier {
 }
 
 impl ImageClassifier {
-    pub fn new(input_size: u32, output_size: u32) -> Self {
+    pub fn new(input_size: u32, output_size: u32, learning_rate: f32) -> Self {
         let mut weights = vec![vec![vec![]; input_size as usize]; output_size as usize];
         let mut biases = vec![vec![]; input_size as usize];
 
@@ -36,7 +40,7 @@ impl ImageClassifier {
         }
     }
 
-    pub fn forward(&mut self, image: &ImageBuffer<Rgb<u8>, Vec<u8>>) -> Vec<f32> {
+    pub fn forward(&mut self, image: &DynamicImage) -> Vec<f32> {
         // Convertir l'image en DynamicImage
         let dynamic_image: image::DynamicImage = image.clone().into();
 
@@ -83,33 +87,48 @@ impl ImageClassifier {
     }
 }
 
+fn to_vec(mut image: DynamicImage) -> Vec<f32> {
+    let mut pixels = Vec::new();
+
+    // Convertir l'image en Rgba
+    let image = image.to_rgba8();
+
+    // Parcourir les pixels de l'image et les ajouter au vecteur
+    for pixel in image.pixels() {
+        pixels.push(pixel[0] as f32);
+        pixels.push(pixel[1] as f32);
+        pixels.push(pixel[2] as f32);
+        pixels.push(pixel[3] as f32);
+    }
+
+    pixels
+}
+
 fn main() {
     use image::open;
 
-    let mut classifier = ImageClassifier::new(28, 3);
+    let mut classifier = ImageClassifier::new(28, 3, 0.01); // Remplacez 0.01 par la valeur souhaitée pour learning_rate
+
+
 
     // Charger les ensembles de données
-    let data_football = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/football/*.jpg")
-        .unwrap()
-        .to_rgb8();
-    let data_volleyball = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/volley/*.jpg")
-        .unwrap()
-        .to_rgb8();
-    let data_football_americain = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/american_football/*.jpg")
-        .unwrap()
-        .to_rgb8();
+    let data_football = open(Path::new("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/football/*.jpg")).unwrap();
+    let data_volleyball = open(Path::new("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/volley/*.jpg")).unwrap();
+    let data_football_americain = open(Path::new("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/american_football/*.jpg")).unwrap();
 
     // Charger l'image de test
-    let image = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/ballon.jpg")
-        .unwrap()
-        .to_rgb8();
+    let image = open(Path::new("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/ballon.jpg")).unwrap();
 
     let prediction = classifier.forward(&image);
     let max_value = prediction.iter().cloned().fold(f32::MIN, f32::max);
     let max_index = prediction.iter().position(|&x| x == max_value).unwrap();
 
     // Backpropagation
-    classifier.backpropagate(prediction, 0, &image.to_vec().iter().map(|&x| x as f32).collect());
+    let pixels = to_vec(image);
+
+    classifier.backpropagate(prediction, 0, &pixels);
+
+
 
     println!("La classe prédite est {}", max_index);
 }
