@@ -1,111 +1,115 @@
-#![allow(non_snake_case)]
+use image::{DynamicImage, GenericImageView, ImageBuffer, open, Pixel, Rgb};
+use rand::Rng;
 
-extern crate image;
-extern crate ndarray;
-extern crate csv;
-extern crate indicatif;
 
-use image::{DynamicImage, GenericImageView};
-use ndarray::{Array, Array2};
-use std::fs;
-use std::path::Path;
-use std::error::Error;
-use std::fs::File;
-use indicatif::ProgressBar;
-
-fn load_image(path: &str, target_width: u32, target_height: u32) -> Result<Array2<f32>, String> {
-    let img = match image::io::Reader::open(path) {
-        Ok(img) => img.decode().map_err(|err| format!("Erreur lors de la lecture de l'image : {}", err))?,
-        Err(err) => return Err(format!("Erreur lors de la lecture de l'image : {}", err)),
-    };
-
-    let resized_img = img.resize_exact(target_width, target_height, image::imageops::FilterType::Lanczos3);
-
-    let mut pixel_data: Vec<f32> = Vec::new();
-    for pixel in resized_img.pixels() {
-        let (r, g, b) = match pixel.2 {
-            image::Rgba(color) => (color[0], color[1], color[2]),
-            _ => (0, 0, 0), // Handle non-RGB images by setting to 0
-        };
-        pixel_data.push(r as f32 / 255.0);
-        pixel_data.push(g as f32 / 255.0);
-        pixel_data.push(b as f32 / 255.0);
-    }
-
-    let image_data = Array::from_shape_vec((target_height as usize, target_width as usize * 3), pixel_data)
-        .expect("Failed to create image array");
-
-    Ok(image_data)
+#[derive(Debug)]
+pub struct ImageClassifier {
+    input_size: u32,
+    output_size: u32,
+    weights: Vec<Vec<Vec<f32>>>,
+    biases: Vec<Vec<f32>>,
+    output: Vec<f32>,
+    learning_rate: f32,
 }
 
-fn load_images_from_directory(directory_path: &str, target_width: u32, target_height: u32) -> Result<Vec<Array2<f32>>, String> {
-    let mut images: Vec<Array2<f32>> = Vec::new();
+impl ImageClassifier {
+    pub fn new(input_size: u32, output_size: u32) -> Self {
+        let mut weights = vec![vec![vec![]; input_size as usize]; output_size as usize];
+        let mut biases = vec![vec![]; input_size as usize];
 
-    let directory = match fs::read_dir(directory_path) {
-        Ok(directory) => directory,
-        Err(err) => return Err(format!("Erreur lors de l'accès au répertoire : {}", err)),
-    };
-
-    let progress = ProgressBar::new_spinner();
-
-    for entry in directory {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_file() {
-                let file_path = path.to_str().unwrap();
-                match load_image(file_path, target_width, target_height) {
-                    Ok(image_data) => {
-                        images.push(image_data);
-                        progress.inc(1);
-                    }
-                    Err(err) => eprintln!("Erreur : {} (Fichier : {})", err, file_path),
+        for i in 0..output_size {
+            for j in 0..input_size {
+                biases[j as usize].push(0.0);
+                for _ in 0..input_size {
+                    weights[i as usize][j as usize].push(rand::thread_rng().gen::<f32>());
                 }
             }
         }
-    }
 
-    progress.finish_and_clear();
-
-    println!("Nombre d'images collectées depuis le répertoire '{}': {}", directory_path, images.len()); // Ajout d'une instruction de débogage
-
-    Ok(images)
-}
-
-fn save_data_to_csv(data: &[Array2<f32>], file_path: &str) -> Result<(), Box<dyn Error>> {
-    let mut writer = csv::Writer::from_path(file_path)?;
-
-    for image_data in data {
-        let flattened_data: Vec<String> = image_data.iter().map(|&x| x.to_string()).collect();
-        let flattened_data_bytes: Vec<&[u8]> = flattened_data.iter().map(|s| s.as_bytes()).collect();
-        writer.write_record(&flattened_data_bytes)?;
-    }
-
-    writer.flush()?;
-    Ok(())
-}
-
-fn main() {
-    let data_dir = "D:/GitHub/Machine_Learning_5JV/images/";
-    let target_width = 64;
-    let target_height = 64;
-
-    let class_directories = ["football_1", "volley_1", "american_football_1"];
-    let mut all_images: Vec<Array2<f32>> = Vec::new();
-
-    for class in &class_directories {
-        let class_dir_path = Path::new(data_dir).join(class);
-        match load_images_from_directory(class_dir_path.to_str().unwrap(), target_width, target_height) {
-            Ok(mut images) => {
-                all_images.append(&mut images);
-                println!("Nombre d'images collectées pour la classe '{}': {}", class, images.len()); // Ajout d'une instruction de débogage
-            }
-            Err(err) => eprintln!("Erreur : {}", err),
+        Self {
+            input_size,
+            output_size,
+            weights,
+            biases,
+            output: vec![0.0; output_size as usize],
+            learning_rate,
         }
     }
 
-    println!("Nombre total d'images collectées : {}", all_images.len()); // Ajout d'une instruction de débogage
+    pub fn forward(&mut self, image: &ImageBuffer<Rgb<u8>, Vec<u8>>) -> Vec<f32> {
+        // Convertir l'image en DynamicImage
+        let dynamic_image: image::DynamicImage = image.clone().into();
 
-    if let Err(err) = save_data_to_csv(&all_images, "D:/GitHub/Machine_Learning_5JV/images/data.csv") {
-        eprintln!("Erreur lors de la sauvegarde des données : {}", err);
+        // Le reste du code reste le même
+        let pixels = dynamic_image.to_rgb8().to_vec().iter().map(|&x| x as f32).collect::<Vec<f32>>();
+        let mut output = self.output.clone();
+
+        for i in 0..self.output_size as usize {
+            for j in 0..self.input_size as usize {
+                let mut sum = 0.0;
+                for k in 0..self.input_size as usize {
+                    sum += self.weights[i][j][k] * pixels[k];
+                }
+                output[i] += sum + self.biases[j][i];
+            }
+        }
+
+        output
     }
+
+    pub fn backpropagate(&mut self, prediction: Vec<f32>, label: u8, _pixels: &[f32]) {
+        // Calcul de l'erreur (loss) et des gradients
+        let mut loss_gradients: Vec<f32> = Vec::with_capacity(self.output_size as usize);
+
+        for i in 0..self.output_size as usize {
+            let gradient = if i == label as usize {
+                prediction[i] - 1.0
+            } else {
+                prediction[i]
+            };
+
+            loss_gradients.push(gradient);
+        }
+
+        // Mise à jour des poids et des biais
+        for i in 0..self.output_size as usize {
+            for j in 0..self.input_size as usize {
+                for k in 0..self.input_size as usize {
+                    self.weights[i][j][k] -= self.learning_rate * loss_gradients[i] * _pixels[k];
+                }
+                self.biases[j][i] -= self.learning_rate * loss_gradients[i];
+            }
+        }
+    }
+}
+
+fn main() {
+    use image::open;
+
+    let mut classifier = ImageClassifier::new(28, 3);
+
+    // Charger les ensembles de données
+    let data_football = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/football/*.jpg")
+        .unwrap()
+        .to_rgb8();
+    let data_volleyball = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/volley/*.jpg")
+        .unwrap()
+        .to_rgb8();
+    let data_football_americain = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/american_football/*.jpg")
+        .unwrap()
+        .to_rgb8();
+
+    // Charger l'image de test
+    let image = open("C:/Users/Louis/Documents/GitHub/machine_Learning_5JV/images/ballon.jpg")
+        .unwrap()
+        .to_rgb8();
+
+    let prediction = classifier.forward(&image);
+    let max_value = prediction.iter().cloned().fold(f32::MIN, f32::max);
+    let max_index = prediction.iter().position(|&x| x == max_value).unwrap();
+
+    // Backpropagation
+    classifier.backpropagate(prediction, 0, &image.to_vec().iter().map(|&x| x as f32).collect());
+
+    println!("La classe prédite est {}", max_index);
 }
