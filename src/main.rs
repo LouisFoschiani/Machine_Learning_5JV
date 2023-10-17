@@ -129,38 +129,75 @@ fn is_valid_jpeg(image_path: &Path) -> bool {
     }
     false
 }
+
 fn main() -> Result<(), ImageError> {
     let mut classifier = ImageClassifier::new(28, 3, 0.01);
 
     // Charger les ensembles de données
-    let data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\football")?;
-    let data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\volley")?;
-    let data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\american_football")?;
+    let data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Avocado")?;
+    let data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Blueberry")?;
+    let data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Banana")?;
 
-    // Entraînez le modèle avec les données
+    // Créez des lots de 3 images
+    let batch_size = 3;
+    let mut current_batch = Vec::with_capacity(batch_size);
+
+    // Entraînez le modèle avec les données par lots
     for image in data_football.iter() {
         let pixels = to_vec(image.clone());
         let prediction = classifier.forward(image);
         // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 0 pour le football).
         classifier.backpropagate(prediction, 0, &pixels);
+
+        current_batch.push(image);
+
+        // Si le lot est complet, rétropropagez et réinitialisez le lot
+        if current_batch.len() == batch_size {
+            // Réalisez la rétropropagation pour ce lot
+            // Réinitialisez le lot
+            current_batch.clear();
+        }
     }
 
+    // Faites de même pour les autres classes (volleyball, football américain)
+
+    // Entraînement avec les données de volleyball
     for image in data_volleyball.iter() {
         let pixels = to_vec(image.clone());
         let prediction = classifier.forward(image);
         // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 1 pour le volleyball).
         classifier.backpropagate(prediction, 1, &pixels);
+
+        current_batch.push(image);
+
+        // Si le lot est complet, rétropropagez et réinitialisez le lot
+        if current_batch.len() == batch_size {
+            // Réalisez la rétropropagation pour ce lot
+            // Réinitialisez le lot
+            current_batch.clear();
+        }
     }
 
+    // Entraînement avec les données de football américain
     for image in data_football_americain.iter() {
         let pixels = to_vec(image.clone());
         let prediction = classifier.forward(image);
         // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 2 pour le football américain).
         classifier.backpropagate(prediction, 2, &pixels);
+
+        current_batch.push(image);
+
+        // Si le lot est complet, rétropropagez et réinitialisez le lot
+        if current_batch.len() == batch_size {
+            // Réalisez la rétropropagation pour ce lot
+            // Réinitialisez le lot
+            current_batch.clear();
+        }
     }
 
     // Après l'entraînement, vous pouvez utiliser le modèle pour prédire de nouvelles images.
 
+    // Ajoutez ici la validation croisée pour surveiller la précision du modèle.
+
     Ok(())
 }
-
