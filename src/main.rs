@@ -9,60 +9,60 @@ use rand::Rng;
 pub struct ImageClassifier {
     input_size: u32,
     output_size: u32,
-    weights: Vec<Vec<Vec<f32>>>,
-    biases: Vec<Vec<f32>>,
-    output: Vec<f32>,
+    weights: Vec<Vec<f32>>,
+    biases: Vec<f32>,
+    acc_gradients: Vec<Vec<f32>>,  // gradients accumulés pour les poids
+    acc_biases: Vec<f32>,  // gradients accumulés pour les biais
     learning_rate: f32,
+
 }
 
 impl ImageClassifier {
     pub fn new(input_size: u32, output_size: u32, learning_rate: f32) -> Self {
-        let mut weights = vec![vec![vec![]; input_size as usize]; output_size as usize];
-        let mut biases = vec![vec![]; input_size as usize];
-
-        for i in 0..output_size {
-            for j in 0..input_size {
-                biases[j as usize].push(0.0);
-                for _ in 0..input_size {
-                    weights[i as usize][j as usize].push(rand::thread_rng().gen::<f32>());
-                }
-            }
-        }
+        let mut rng = rand::thread_rng();
+        let weights = vec![vec![rng.gen::<f32>(); input_size as usize]; output_size as usize];
+        let biases = vec![0.0; output_size as usize];
 
         Self {
             input_size,
             output_size,
             weights,
             biases,
-            output: vec![0.0; output_size as usize],
+            acc_gradients: vec![vec![0.0; input_size as usize]; output_size as usize],
+            acc_biases: vec![0.0; output_size as usize],
             learning_rate,
         }
     }
 
-    pub fn forward(&mut self, image: &DynamicImage) -> Vec<f32> {
-        // Convertir l'image en DynamicImage
-        let dynamic_image: image::DynamicImage = image.clone().into();
-
-        // Le reste du code reste le même
-        let pixels = dynamic_image.to_rgb8().to_vec().iter().map(|&x| x as f32).collect::<Vec<f32>>();
-        let mut output = self.output.clone();
-
+    pub fn reset_gradients(&mut self) {
         for i in 0..self.output_size as usize {
+            self.acc_biases[i] = 0.0;
             for j in 0..self.input_size as usize {
-                let mut sum = 0.0;
-                for k in 0..self.input_size as usize {
-                    sum += self.weights[i][j][k] * pixels[k];
-                }
-                output[i] += sum + self.biases[j][i];
+                self.acc_gradients[i][j] = 0.0;
             }
         }
+    }
 
+    fn cross_entropy_loss(prediction: &Vec<f32>, label: u8) -> f32 {
+        let true_label_prob = prediction[label as usize];
+        -true_label_prob.ln()
+    }
+
+    pub fn forward(&mut self, image: &DynamicImage) -> Vec<f32> {
+        let pixels = to_vec(image.clone());
+        let mut output = vec![0.0; self.output_size as usize];
+        for i in 0..self.output_size as usize {
+            for k in 0..self.input_size as usize {
+                output[i] += self.weights[i][k] * pixels[k];
+            }
+            output[i] += self.biases[i];
+        }
         output
     }
 
-    pub fn backpropagate(&mut self, prediction: Vec<f32>, label: u8, _pixels: &[f32]) {
-        // Calcul de l'erreur (loss) et des gradients
-        let mut loss_gradients: Vec<f32> = Vec::with_capacity(self.output_size as usize);
+    pub fn backpropagate(&mut self, prediction: Vec<f32>, label: u8, pixels: &[f32]) {
+        let loss = Self::cross_entropy_loss(&prediction, label);
+        let mut loss_gradients: Vec<f32> = vec![0.0; self.output_size as usize];
 
         for i in 0..self.output_size as usize {
             let gradient = if i == label as usize {
@@ -70,17 +70,22 @@ impl ImageClassifier {
             } else {
                 prediction[i]
             };
-
             loss_gradients.push(gradient);
         }
 
-        // Mise à jour des poids et des biais
         for i in 0..self.output_size as usize {
+            self.acc_biases[i] += loss_gradients[i];
             for j in 0..self.input_size as usize {
-                for k in 0..self.input_size as usize {
-                    self.weights[i][j][k] -= self.learning_rate * loss_gradients[i] * _pixels[k];
-                }
-                self.biases[j][i] -= self.learning_rate * loss_gradients[i];
+                self.acc_gradients[i][j] += loss_gradients[i] * pixels[j];
+            }
+        }
+    }
+
+    pub fn update_weights_biases(&mut self) {
+        for i in 0..self.output_size as usize {
+            self.biases[i] -= self.learning_rate * self.acc_biases[i];
+            for j in 0..self.input_size as usize {
+                self.weights[i][j] -= self.learning_rate * self.acc_gradients[i][j];
             }
         }
     }
@@ -88,18 +93,13 @@ impl ImageClassifier {
 
 fn to_vec(image: DynamicImage) -> Vec<f32> {
     let mut pixels = Vec::new();
-
-    // Convertir l'image en Rgba
     let image = image.to_rgba8();
-
-    // Parcourir les pixels de l'image et les ajouter au vecteur
     for pixel in image.pixels() {
-        pixels.push(pixel[0] as f32);
-        pixels.push(pixel[1] as f32);
-        pixels.push(pixel[2] as f32);
-        pixels.push(pixel[3] as f32);
+        pixels.push(pixel[0] as f32 / 255.0);
+        pixels.push(pixel[1] as f32 / 255.0);
+        pixels.push(pixel[2] as f32 / 255.0);
+        pixels.push(pixel[3] as f32 / 255.0);
     }
-
     pixels
 }
 
@@ -119,6 +119,7 @@ fn load_images_from_directory(directory_path: &str) -> Result<Vec<DynamicImage>,
     Ok(images)
 }
 
+
 fn is_valid_jpeg(image_path: &Path) -> bool {
     use image::io::Reader;
 
@@ -130,74 +131,72 @@ fn is_valid_jpeg(image_path: &Path) -> bool {
     false
 }
 
+fn classify_new_image(classifier: &mut ImageClassifier, image_path: &str) -> Result<u8, ImageError> {
+    let image = open(image_path)?;
+    let output = classifier.forward(&image);
+    let predicted_label = output.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0 as u8;
+    Ok(predicted_label)
+}
 fn main() -> Result<(), ImageError> {
     let mut classifier = ImageClassifier::new(28, 3, 0.01);
 
-    // Charger les ensembles de données
     let data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Avocado")?;
     let data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Blueberry")?;
     let data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Banana")?;
 
-    // Créez des lots de 3 images
+
     let batch_size = 3;
     let mut current_batch = Vec::with_capacity(batch_size);
 
-    // Entraînez le modèle avec les données par lots
-    for image in data_football.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 0 pour le football).
-        classifier.backpropagate(prediction, 0, &pixels);
+    for epoch in 0..100{
 
-        current_batch.push(image);
+        // ... exemple d'entraînement avec les données de football ...
+        for image in data_football.iter() {
+            let pixels = to_vec(image.clone());
+            let prediction = classifier.forward(image);
+            classifier.backpropagate(prediction, 0, &pixels);
+            current_batch.push(image);
 
-        // Si le lot est complet, rétropropagez et réinitialisez le lot
-        if current_batch.len() == batch_size {
-            // Réalisez la rétropropagation pour ce lot
-            // Réinitialisez le lot
-            current_batch.clear();
+            if current_batch.len() == batch_size {
+                classifier.update_weights_biases();
+                classifier.reset_gradients();
+                current_batch.clear();
+            }
+        }
+
+        for image in data_volleyball.iter() {
+            let pixels = to_vec(image.clone());
+            let prediction = classifier.forward(image);
+            classifier.backpropagate(prediction, 1, &pixels);
+            current_batch.push(image);
+
+            if current_batch.len() == batch_size {
+                classifier.update_weights_biases();
+                classifier.reset_gradients();
+                current_batch.clear();
+            }
+        }
+
+        for image in data_football_americain.iter() {
+            let pixels = to_vec(image.clone());
+            let prediction = classifier.forward(image);
+            classifier.backpropagate(prediction, 2, &pixels);
+            current_batch.push(image);
+
+            if current_batch.len() == batch_size {
+                classifier.update_weights_biases();
+                classifier.reset_gradients();
+                current_batch.clear();
+            }
         }
     }
 
-    // Faites de même pour les autres classes (volleyball, football américain)
 
-    // Entraînement avec les données de volleyball
-    for image in data_volleyball.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 1 pour le volleyball).
-        classifier.backpropagate(prediction, 1, &pixels);
-
-        current_batch.push(image);
-
-        // Si le lot est complet, rétropropagez et réinitialisez le lot
-        if current_batch.len() == batch_size {
-            // Réalisez la rétropropagation pour ce lot
-            // Réinitialisez le lot
-            current_batch.clear();
-        }
+    let image_path = "C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\avocat.jpg";
+    match classify_new_image(&mut classifier, image_path) {
+        Ok(label) => println!("Predicted label: {}", label),
+        Err(e) => eprintln!("Failed to classify image: {}", e),
     }
-
-    // Entraînement avec les données de football américain
-    for image in data_football_americain.iter() {
-        let pixels = to_vec(image.clone());
-        let prediction = classifier.forward(image);
-        // Réalisez la rétropropagation ici en utilisant les étiquettes appropriées (par exemple, 2 pour le football américain).
-        classifier.backpropagate(prediction, 2, &pixels);
-
-        current_batch.push(image);
-
-        // Si le lot est complet, rétropropagez et réinitialisez le lot
-        if current_batch.len() == batch_size {
-            // Réalisez la rétropropagation pour ce lot
-            // Réinitialisez le lot
-            current_batch.clear();
-        }
-    }
-
-    // Après l'entraînement, vous pouvez utiliser le modèle pour prédire de nouvelles images.
-
-    // Ajoutez ici la validation croisée pour surveiller la précision du modèle.
 
     Ok(())
 }
