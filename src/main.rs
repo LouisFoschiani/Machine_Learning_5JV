@@ -1,11 +1,15 @@
 #![allow(non_snake_case)]
 
+#[macro_use]
+extern crate serde;
+
+use serde::{Serialize, Deserialize, Serializer};
 use std::fs;
 use std::path::Path;
 use image::{DynamicImage, ImageError, open};
 use rand::Rng;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ImageClassifier {
     input_size: u32,
     output_size: u32,
@@ -14,8 +18,37 @@ pub struct ImageClassifier {
     acc_gradients: Vec<Vec<f32>>,  // gradients accumulés pour les poids
     acc_biases: Vec<f32>,  // gradients accumulés pour les biais
     learning_rate: f32,
-
 }
+
+
+
+
+mod serde_arrays {
+    use serde::{Serialize, Deserialize, Serializer, Deserializer, ser::SerializeSeq};
+
+    pub fn serialize<S>(value: &Vec<Vec<f32>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+    {
+        let flat_vec: Vec<f32> = value.iter().cloned().flatten().collect();
+        let mut seq = serializer.serialize_seq(Some(flat_vec.len()))?;
+        for item in &flat_vec {
+            seq.serialize_element(item)?;
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<f32>>, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let flat_vec: Vec<f32> = Vec::deserialize(deserializer)?;
+        // Note: You'll need to pass `input_size` as a parameter to this function.
+        let input_size = 28; // Replace with the correct value.
+        Ok(flat_vec.chunks(input_size as usize).map(|chunk| chunk.to_vec()).collect())
+    }
+}
+
 
 impl ImageClassifier {
     pub fn new(input_size: u32, output_size: u32, learning_rate: f32) -> Self {
@@ -31,7 +64,20 @@ impl ImageClassifier {
             acc_gradients: vec![vec![0.0; input_size as usize]; output_size as usize],
             acc_biases: vec![0.0; output_size as usize],
             learning_rate,
+
         }
+    }
+
+
+    pub fn save_weights(&self, filename: &str) -> Result<(), std::io::Error> {
+        let serialized = serde_json::to_string(self).unwrap();
+        fs::write(filename, &serialized)
+    }
+
+    pub fn load_weights(&mut self, filename: &str) -> Result<(), std::io::Error> {
+        let serialized = fs::read_to_string(filename)?;
+        *self = serde_json::from_str(&serialized).unwrap();
+        Ok(())
     }
 
     pub fn reset_gradients(&mut self) {
@@ -137,18 +183,25 @@ fn classify_new_image(classifier: &mut ImageClassifier, image_path: &str) -> Res
     let predicted_label = output.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0 as u8;
     Ok(predicted_label)
 }
+
 fn main() -> Result<(), ImageError> {
     let mut classifier = ImageClassifier::new(28, 3, 0.01);
 
-    let data_football = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Avocado")?;
-    let data_volleyball = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Blueberry")?;
-    let data_football_americain = load_images_from_directory("C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\Banana")?;
+    // Sauvegardez les poids du modèle
+    classifier.save_weights("model_weights.json").unwrap();
+
+    // Chargez les poids du modèle depuis le fichier JSON
+    classifier.load_weights("model_weights.json").unwrap();
+
+    let data_football = load_images_from_directory("images\\Avocado")?;
+    let data_volleyball = load_images_from_directory("images\\Blueberry")?;
+    let data_football_americain = load_images_from_directory("images\\Banana")?;
 
 
     let batch_size = 3;
     let mut current_batch = Vec::with_capacity(batch_size);
 
-    for epoch in 0..100{
+    for epoch in 0..50{
 
         // ... exemple d'entraînement avec les données de football ...
         for image in data_football.iter() {
@@ -192,7 +245,7 @@ fn main() -> Result<(), ImageError> {
     }
 
 
-    let image_path = "C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\images\\avocat.jpg";
+    let image_path = "images\\avocat.jpg";
     match classify_new_image(&mut classifier, image_path) {
         Ok(label) => println!("Predicted label: {}", label),
         Err(e) => eprintln!("Failed to classify image: {}", e),
