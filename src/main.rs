@@ -1,57 +1,31 @@
 #![allow(non_snake_case)]
+#[warn(unused_variables)]
 
-#[macro_use]
 extern crate serde;
 
-use serde::{Serialize, Deserialize, Serializer};
+// Importer les bibliothèques nécessaires.
+use serde::{Serialize, Deserialize};
 use std::fs;
 use std::path::Path;
 use image::{DynamicImage, ImageError, open};
 use rand::Rng;
 
+// Définir une structure pour le classificateur d'images.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ImageClassifier {
     input_size: u32,
     output_size: u32,
     weights: Vec<Vec<f32>>,
     biases: Vec<f32>,
-    acc_gradients: Vec<Vec<f32>>,  // gradients accumulés pour les poids
-    acc_biases: Vec<f32>,  // gradients accumulés pour les biais
+    acc_gradients: Vec<Vec<f32>>,  // Gradients accumulés pour les poids.
+    acc_biases: Vec<f32>,  // Gradients accumulés pour les biais.
     learning_rate: f32,
 }
 
-
-
-
-mod serde_arrays {
-    use serde::{Serialize, Deserialize, Serializer, Deserializer, ser::SerializeSeq};
-
-    pub fn serialize<S>(value: &Vec<Vec<f32>>, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-    {
-        let flat_vec: Vec<f32> = value.iter().cloned().flatten().collect();
-        let mut seq = serializer.serialize_seq(Some(flat_vec.len()))?;
-        for item in &flat_vec {
-            seq.serialize_element(item)?;
-        }
-        seq.end()
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Vec<f32>>, D::Error>
-        where
-            D: Deserializer<'de>,
-    {
-        let flat_vec: Vec<f32> = Vec::deserialize(deserializer)?;
-        // Note: You'll need to pass `input_size` as a parameter to this function.
-        let input_size = 28; // Replace with the correct value.
-        Ok(flat_vec.chunks(input_size as usize).map(|chunk| chunk.to_vec()).collect())
-    }
-}
-
-
 impl ImageClassifier {
+    // Méthode pour créer une nouvelle instance du classificateur d'images.
     pub fn new(input_size: u32, output_size: u32, learning_rate: f32) -> Self {
+        // Génération de poids initiaux aléatoires et initialisation des autres valeurs.
         let mut rng = rand::thread_rng();
         let weights = vec![vec![rng.gen::<f32>(); input_size as usize]; output_size as usize];
         let biases = vec![0.0; output_size as usize];
@@ -64,22 +38,24 @@ impl ImageClassifier {
             acc_gradients: vec![vec![0.0; input_size as usize]; output_size as usize],
             acc_biases: vec![0.0; output_size as usize],
             learning_rate,
-
         }
     }
 
-
+    // Méthode pour sauvegarder les poids du modèle dans un fichier.
     pub fn save_weights(&self, filename: &str) -> Result<(), std::io::Error> {
+        // Utilisez le format JSON pour la sérialisation.
         let serialized = serde_json::to_string(self).unwrap();
         fs::write(filename, &serialized)
     }
 
+    // Méthode pour charger les poids du modèle depuis un fichier.
     pub fn load_weights(&mut self, filename: &str) -> Result<(), std::io::Error> {
         let serialized = fs::read_to_string(filename)?;
         *self = serde_json::from_str(&serialized).unwrap();
         Ok(())
     }
 
+    // Méthode pour réinitialiser les gradients accumulés.
     pub fn reset_gradients(&mut self) {
         for i in 0..self.output_size as usize {
             self.acc_biases[i] = 0.0;
@@ -89,11 +65,13 @@ impl ImageClassifier {
         }
     }
 
+    // Fonction pour calculer la perte d'entropie croisée.
     fn cross_entropy_loss(prediction: &Vec<f32>, label: u8) -> f32 {
         let true_label_prob = prediction[label as usize];
         -true_label_prob.ln()
     }
 
+    // Méthode pour effectuer la propagation avant (forward pass) à travers le modèle.
     pub fn forward(&mut self, image: &DynamicImage) -> Vec<f32> {
         let pixels = to_vec(image.clone());
         let mut output = vec![0.0; self.output_size as usize];
@@ -106,8 +84,9 @@ impl ImageClassifier {
         output
     }
 
+    // Méthode pour effectuer la rétropropagation (backpropagation) et mettre à jour les gradients accumulés.
     pub fn backpropagate(&mut self, prediction: Vec<f32>, label: u8, pixels: &[f32]) {
-        let loss = Self::cross_entropy_loss(&prediction, label);
+        let _loss = Self::cross_entropy_loss(&prediction, label);
         let mut loss_gradients: Vec<f32> = vec![0.0; self.output_size as usize];
 
         for i in 0..self.output_size as usize {
@@ -127,6 +106,7 @@ impl ImageClassifier {
         }
     }
 
+    // Méthode pour mettre à jour les poids et les biais du modèle.
     pub fn update_weights_biases(&mut self) {
         for i in 0..self.output_size as usize {
             self.biases[i] -= self.learning_rate * self.acc_biases[i];
@@ -137,6 +117,7 @@ impl ImageClassifier {
     }
 }
 
+// Fonction pour convertir une image en un vecteur de pixels normalisés.
 fn to_vec(image: DynamicImage) -> Vec<f32> {
     let mut pixels = Vec::new();
     let image = image.to_rgba8();
@@ -149,6 +130,7 @@ fn to_vec(image: DynamicImage) -> Vec<f32> {
     pixels
 }
 
+// Fonction pour charger des images à partir d'un répertoire.
 fn load_images_from_directory(directory_path: &str) -> Result<Vec<DynamicImage>, ImageError> {
     let mut images = Vec::new();
     let paths = fs::read_dir(directory_path)?;
@@ -156,7 +138,7 @@ fn load_images_from_directory(directory_path: &str) -> Result<Vec<DynamicImage>,
     for path in paths {
         let entry = path?;
         let file_path = entry.path();
-        if file_path.is_file() {
+        if file_path.is_file() && is_valid_jpeg(&file_path) {
             let image = open(file_path)?;
             images.push(image);
         }
@@ -165,7 +147,7 @@ fn load_images_from_directory(directory_path: &str) -> Result<Vec<DynamicImage>,
     Ok(images)
 }
 
-
+// Fonction pour vérifier si un fichier est un JPEG valide.
 fn is_valid_jpeg(image_path: &Path) -> bool {
     use image::io::Reader;
 
@@ -177,6 +159,7 @@ fn is_valid_jpeg(image_path: &Path) -> bool {
     false
 }
 
+// Fonction pour classifier une nouvelle image.
 fn classify_new_image(classifier: &mut ImageClassifier, image_path: &str) -> Result<u8, ImageError> {
     let image = open(image_path)?;
     let output = classifier.forward(&image);
@@ -185,26 +168,24 @@ fn classify_new_image(classifier: &mut ImageClassifier, image_path: &str) -> Res
 }
 
 fn main() -> Result<(), ImageError> {
-    let mut classifier = ImageClassifier::new(28, 3, 0.01);
+    let mut classifier = ImageClassifier::new(28 * 28, 3, 0.01); // L'input_size devrait correspondre à la taille de l'image.
 
-    // Sauvegardez les poids du modèle
+    // Sauvegardez les poids du modèle.
     classifier.save_weights("model_weights.json").unwrap();
 
-    // Chargez les poids du modèle depuis le fichier JSON
+    // Chargez les poids du modèle depuis le fichier JSON.
     classifier.load_weights("model_weights.json").unwrap();
 
-    let data_football = load_images_from_directory("images\\Avocado")?;
-    let data_volleyball = load_images_from_directory("images\\Blueberry")?;
-    let data_football_americain = load_images_from_directory("images\\Banana")?;
-
+    // Chargez les données d'entraînement à partir des répertoires.
+    let data_avocat = load_images_from_directory("images\\Avocado")?;
+    let data_blueberry = load_images_from_directory("images\\Blueberry")?;
+    let data_banane = load_images_from_directory("images\\Banana")?;
 
     let batch_size = 3;
     let mut current_batch = Vec::with_capacity(batch_size);
 
-    for epoch in 0..50{
-
-        // ... exemple d'entraînement avec les données de football ...
-        for image in data_football.iter() {
+    for _epoch in 0..50 {
+        for image in data_avocat.iter() {
             let pixels = to_vec(image.clone());
             let prediction = classifier.forward(image);
             classifier.backpropagate(prediction, 0, &pixels);
@@ -217,7 +198,7 @@ fn main() -> Result<(), ImageError> {
             }
         }
 
-        for image in data_volleyball.iter() {
+        for image in data_blueberry.iter() {
             let pixels = to_vec(image.clone());
             let prediction = classifier.forward(image);
             classifier.backpropagate(prediction, 1, &pixels);
@@ -230,7 +211,7 @@ fn main() -> Result<(), ImageError> {
             }
         }
 
-        for image in data_football_americain.iter() {
+        for image in data_banane.iter() {
             let pixels = to_vec(image.clone());
             let prediction = classifier.forward(image);
             classifier.backpropagate(prediction, 2, &pixels);
@@ -244,7 +225,7 @@ fn main() -> Result<(), ImageError> {
         }
     }
 
-
+    // Classifier une nouvelle image et afficher l'étiquette prédite.
     let image_path = "images\\avocat.jpg";
     match classify_new_image(&mut classifier, image_path) {
         Ok(label) => println!("Predicted label: {}", label),
