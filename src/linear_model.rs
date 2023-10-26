@@ -6,11 +6,13 @@ use image::{DynamicImage, GenericImageView, ImageError, open};
 use std::fs;
 use std::path::Path;
 use rand::Rng;
+use std::fmt;
 
 // Structure du modèle linéaire
 pub struct LinearModel {
     weights: Array1<f32>,
 }
+
 
 #[derive(Debug, PartialEq)]
 pub enum ImageClass {
@@ -18,6 +20,18 @@ pub enum ImageClass {
     Tomato,
     Banana,
 }
+
+
+impl fmt::Display for ImageClass {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ImageClass::Avocado => write!(f, "Avocado"),
+            ImageClass::Tomato => write!(f, "Tomato"),
+            ImageClass::Banana => write!(f, "Banana"),
+        }
+    }
+}
+
 
 impl LinearModel {
     pub fn new(input_size: usize) -> Self {
@@ -74,8 +88,13 @@ pub fn main() -> Result<(), ImageError> {
 
     // Testez le modèle sur des données de test.
     let mut correct_predictions = 0;
+    let mut problematic_images = Vec::new();
     for (image, label) in test_data.iter() {
         let pixels = to_normalized_vec(image.clone());
+        if pixels.is_empty() {
+            problematic_images.push(label.to_string());
+            continue;  // Ignorez cette image problématique
+        }
         let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
         let prediction = model.predict(&features);
         let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
@@ -88,9 +107,19 @@ pub fn main() -> Result<(), ImageError> {
     let accuracy = correct_predictions as f32 / test_data.len() as f32;
     println!("Accuracy: {:.2}%", accuracy * 100.0);
 
+    if !problematic_images.is_empty() {
+        println!("Problematic images: {:?}", problematic_images);
+    }
+
+    println!("Accuracy: {:.2}%", accuracy * 100.0);
+
     // Classification des images inconnues depuis le répertoire "images/Unknown"
     for (image, label) in unknown_data.iter() {
         let pixels = to_normalized_vec(image.clone());
+        if pixels.is_empty() {
+            problematic_images.push(label.to_string());
+            continue;  // Ignorez cette image problématique
+        }
         let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
         let prediction = model.predict(&features);
         let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
@@ -107,7 +136,6 @@ pub fn main() -> Result<(), ImageError> {
 
     Ok(())
 }
-
 fn load_images_from_directory(directory_path: &str) -> Result<Vec<(DynamicImage, ImageClass)>, ImageError> {
     let mut images = Vec::new();
     let paths = fs::read_dir(directory_path)?;
