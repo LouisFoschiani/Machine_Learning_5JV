@@ -35,9 +35,11 @@ impl fmt::Display for ImageClass {
 
 impl LinearModel {
     pub fn new(input_size: usize) -> Self {
-        // Initialisez les poids aléatoirement
         let mut rng = rand::thread_rng();
-        let weights = Array::from_shape_fn(input_size, |_| rng.gen());
+        let weights = Array::from_shape_fn(input_size, |_| {
+            let weight: f32 = rng.gen_range(-1.0..1.0);
+            weight
+        });
 
         Self { weights }
     }
@@ -47,11 +49,9 @@ impl LinearModel {
             let predictions = self.predict(features);
             let errors = labels - &predictions;
 
-            let gradient = -&features.t().dot(&errors);
-
-            for (weight, grad) in self.weights.iter_mut().zip(gradient.iter()) {
-                *weight -= learning_rate * grad;
-            }
+            // Mise à jour des poids
+            let gradient = features.t().dot(&errors);
+            self.weights -= &(&gradient * learning_rate);
         }
     }
 
