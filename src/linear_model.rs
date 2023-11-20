@@ -7,179 +7,76 @@ use std::fs;
 use std::path::Path;
 use rand::Rng;
 use std::fmt;
+use image::io::Reader as ImageReader;
 
 // Structure du modèle linéaire
-pub struct LinearModel {
+
+struct LinearModel {
     weights: Array1<f32>,
 }
 
-
-#[derive(Debug, PartialEq)]
-pub enum ImageClass {
-    Avocado,
-    Tomato,
-    Banana,
-}
-
-
-impl fmt::Display for ImageClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ImageClass::Avocado => write!(f, "Avocado"),
-            ImageClass::Tomato => write!(f, "Tomato"),
-            ImageClass::Banana => write!(f, "Banana"),
-        }
-    }
-}
-
-
 impl LinearModel {
-    pub fn new(input_size: usize) -> Self {
+    fn new(input_size: usize) -> LinearModel {
         let mut rng = rand::thread_rng();
-        let weights = Array::from_shape_fn(input_size, |_| {
-            let weight: f32 = rng.gen_range(-1.0..1.0);
-            weight
-        });
-
-        Self { weights }
+        let weights = Array1::from((0..input_size).map(|_| rng.gen::<f32>()).collect::<Vec<f32>>());
+        LinearModel { weights }
     }
 
-    pub fn train(&mut self, features: &Array2<f32>, labels: &Array1<f32>, learning_rate: f32, num_iterations: usize) {
-        for _ in 0..num_iterations {
-            let predictions = self.predict(features);
-            let errors = labels - &predictions;
-
-            // Mise à jour des poids
-            let gradient = features.t().dot(&errors);
-            self.weights -= &(&gradient * learning_rate);
+    fn train(&mut self, inputs: &Array2<f32>, labels: &Array1<i32>, iterations: usize, learning_rate: f32) {
+        for _ in 0..iterations {
+            let predictions = inputs.dot(&self.weights);
+            let errors = &labels - &predictions;
+            self.weights += &(inputs.t().dot(&errors) * learning_rate);
         }
     }
 
-
-    pub fn predict(&self, features: &Array2<f32>) -> Array1<f32> {
-        features.dot(&self.weights)
+    fn predict(&self, input: &Array1<f32>) -> i32 {
+        if input.dot(&self.weights) > 0.5 { 1 } else { 0 }
     }
 }
 
-pub fn main() -> Result<(), ImageError> {
-    let training_data = load_images_from_directory("images/Training")?;
-    let test_data = load_images_from_directory("images/Test")?;
-    let unknown_data = load_images_from_directory("images/Unknown")?;
-
-    // Définissez les caractéristiques (features) et les étiquettes (labels) à partir des données d'entraînement.
-    let mut features = Array::zeros((training_data.len(), 3)); // 3 features (R, G, B)
-    let mut labels = Array1::zeros(training_data.len());
-
-    for (i, (image, label)) in training_data.iter().enumerate() {
-        let pixels = to_normalized_vec(image.clone());
-        features.row_mut(i).assign(&Array1::from(pixels));
-        labels[i] = match label {
-            ImageClass::Avocado => 1.0,
-            ImageClass::Tomato => 2.0,
-            ImageClass::Banana => 3.0,
-            // Ajoutez d'autres classes au besoin
-        };
-    }
-
-    // Créez et entraînez le modèle linéaire.
-    let input_size = features.shape()[1];
-    let mut model = LinearModel::new(input_size);
-    model.train(&features, &labels, 0.01, 1000);
-
-    // Testez le modèle sur des données de test.
-    let mut correct_predictions = 0;
-    let mut problematic_images = Vec::new();
-    for (image, label) in test_data.iter() {
-        let pixels = to_normalized_vec(image.clone());
-        if pixels.is_empty() {
-            problematic_images.push(label.to_string());
-            continue;  // Ignorez cette image problématique
-        }
-        let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
-        let prediction = model.predict(&features);
-        let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
-
-        if predicted_class_label == *label {
-            correct_predictions += 1;
-        }
-    }
-
-    let accuracy = correct_predictions as f32 / test_data.len() as f32;
-    println!("Accuracy: {:.2}%", accuracy * 100.0);
-
-    if !problematic_images.is_empty() {
-        println!("Problematic images: {:?}", problematic_images);
-    }
-
-    println!("Accuracy: {:.2}%", accuracy * 100.0);
-
-    // Classification des images inconnues depuis le répertoire "images/Unknown"
-    for (image, label) in unknown_data.iter() {
-        let pixels = to_normalized_vec(image.clone());
-        if pixels.is_empty() {
-            problematic_images.push(label.to_string());
-            continue;  // Ignorez cette image problématique
-        }
-        let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
-        let prediction = model.predict(&features);
-        let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
-
-        let predicted_class_str = match predicted_class_label {
-            ImageClass::Avocado => "Avocado",
-            ImageClass::Tomato => "Tomato",
-            ImageClass::Banana => "Banana",
-            // Ajoutez d'autres classes au besoin
-        };
-
-        println!("Predicted class: {} (True class: {:?})", predicted_class_str, label);
-    }
-
-    Ok(())
-}
-fn load_images_from_directory(directory_path: &str) -> Result<Vec<(DynamicImage, ImageClass)>, ImageError> {
-    let mut images = Vec::new();
-    let paths = fs::read_dir(directory_path)?;
-
-    for path in paths {
-        let entry = path?;
-        let file_path = entry.path();
-        if file_path.is_file() && is_valid_jpeg(&file_path) {
-            let image = open(file_path.clone())?;
-            let image_class = match file_path.parent() {
-                Some(parent) => match parent.file_name().and_then(|s| s.to_str()) {
-                    Some("Avocado") => ImageClass::Avocado,
-                    Some("Tomato") => ImageClass::Tomato,
-                    Some("Banana") => ImageClass::Banana,
-                    // Ajoutez d'autres classes au besoin
-                    _ => ImageClass::Avocado, // Par défaut
-                },
-                _ => ImageClass::Avocado, // Par défaut
-            };
-            images.push((image, image_class));
-        }
-    }
-
-    Ok(images)
+fn load_image(path: &str) -> Vec<f32> {
+    let img = ImageReader::open(path).unwrap().decode().unwrap();
+    img.pixels()
+        .map(|p| p.2[0] as f32 / 255.0)
+        .collect::<Vec<f32>>()
 }
 
-fn is_valid_jpeg(image_path: &Path) -> bool {
-    use image::io::Reader;
-    if let Ok(reader) = Reader::open(image_path) {
-        if let Ok(_) = reader.with_guessed_format() {
-            return true;
-        }
-    }
-    false
+fn load_images_from_folder(folder: &str) -> Vec<Vec<f32>> {
+    fs::read_dir(folder).unwrap()
+        .filter_map(|entry| {
+            entry.ok().and_then(|e| {
+                let path = e.path();
+                if path.is_file() {
+                    Some(load_image(path.to_str().unwrap()))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect()
 }
 
-fn to_normalized_vec(image: DynamicImage) -> Vec<f32> {
-    image.pixels().flat_map(|pixel| {
-        let pixel = pixel.2; // Extraction du pixel Rgba<u8>
-        let (r, g, b) = (
-            pixel[0] as f32 / 255.0,
-            pixel[1] as f32 / 255.0,
-            pixel[2] as f32 / 255.0,
-        );
-        vec![r, g, b]
-    }).collect()
+fn create_labels(num_images: usize, label: i32) -> Vec<i32> {
+    vec![label; num_images]
+}
+
+fn main() {
+    let banana_images = load_images_from_folder("Unknown/Banana");
+    let avocado_images = load_images_from_folder("Unknown/Avocado");
+    let tomato_images = load_images_from_folder("Unknown/Tomato");
+
+    let banana_labels = create_labels(banana_images.len(), 0);
+    let avocado_labels = create_labels(avocado_images.len(), 1);
+    let tomato_labels = create_labels(tomato_images.len(), 2);
+
+    let all_images = [banana_images, avocado_images, tomato_images].concat();
+    let all_labels = [banana_labels, avocado_labels, tomato_labels].concat();
+
+    let flattened_images: Vec<f32> = all_images.into_iter().flatten().collect();
+    let inputs = Array2::from_shape_vec((all_labels.len(), flattened_images.len() / all_labels.len()), flattened_images).unwrap();
+    let labels = Array1::from(all_labels);
+
+    let mut model = LinearModel::new(inputs.ncols());
+    model.train(&inputs, &labels, 1000, 0.01);
 }
