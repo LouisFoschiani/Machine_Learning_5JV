@@ -13,10 +13,10 @@ struct LinearModel {
 
 impl LinearModel {
     fn new(input_size: usize) -> LinearModel {
-        let mut rng = rand::thread_rng();
-        let weights = Array1::from((0..input_size).map(|_| rng.gen::<f32>()).collect::<Vec<f32>>());
+        let weights = Array1::from(vec![0.1; input_size]);
         LinearModel { weights }
     }
+
 
     fn train(&mut self, inputs: &Array2<f32>, labels: &Array1<i32>, iterations: usize, learning_rate: f32) {
         let labels_f32 = labels.mapv(|l| l as f32);
@@ -24,7 +24,13 @@ impl LinearModel {
             let predictions = inputs.dot(&self.weights);
             let errors = &labels_f32 - &predictions;
             self.weights += &(inputs.t().dot(&errors) * learning_rate);
+
+            if self.weights.iter().any(|&w| w.is_infinite()) {
+                eprintln!("Poids infinis détectés.");
+                break;
+            }
         }
+
     }
 
     fn predict(&self, input: &Array1<f32>) -> i32 {
@@ -75,9 +81,9 @@ fn create_labels(num_images: usize, label: i32) -> Vec<i32> {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let banana_images = load_images_from_folder("C:/chemin/complet/vers/Unknown/Banana")?;
-    let avocado_images = load_images_from_folder("Unknown/Avocado")?;
-    let tomato_images = load_images_from_folder("Unknown/Tomato")?;
+    let banana_images = load_images_from_folder("images/Unknown/Banana")?;
+    let avocado_images = load_images_from_folder("images/Unknown/Avocado")?;
+    let tomato_images = load_images_from_folder("images/Unknown/Tomato")?;
 
     let banana_labels = create_labels(banana_images.len(), 0);
     let avocado_labels = create_labels(avocado_images.len(), 1);
@@ -91,17 +97,19 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let labels = Array1::from(all_labels);
 
     let mut model = LinearModel::new(inputs.ncols());
-    model.train(&inputs, &labels, 1000, 0.01);
+    model.train(&inputs, &labels, 1000, 0.0001); // Essayez une valeur encore plus petite
+
+
 
     // Sauvegarde des poids du modèle
     model.save_weights("model_weights.txt")?;
 
     // Exemple de prédiction (à adapter selon vos besoins)
     // Supposons que vous ayez une image "path/to/new_image.jpg"
-    // let new_image = load_image("path/to/new_image.jpg")?;
-    // let new_image_vector = Array1::from(new_image);
-    // let category = model.predict_category(&new_image_vector);
-    // println!("Catégorie prédite: {}", category);
+    //let new_image = load_image("images/avocat.jpg")?;
+    //let new_image_vector = Array1::from(new_image);
+    //let category = model.predict_category(&new_image_vector);
+    //println!("Catégorie prédite: {}", category);
 
     Ok(())
 }

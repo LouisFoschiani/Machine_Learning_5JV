@@ -2,8 +2,10 @@
 mod linear_model;
 
 fn main() {
+    println!("Démarrage du programme...");
     match linear_model::run() {
-        Ok(()) => println!("Linear model executed successfully."),
-        Err(e) => println!("Error executing linear model: {}", e),
+        Ok(()) => println!("Modèle linéaire exécuté avec succès."),
+        Err(e) => println!("Erreur lors de l'exécution du modèle linéaire : {}", e),
     }
+    println!("Programme terminé.");
 }
