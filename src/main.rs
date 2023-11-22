@@ -1,341 +1,188 @@
 use std::collections::HashMap;
-use std::fs::read_dir;
+use std::fs::{File, read_dir};
 use std::path::Path;
 use std::vec::Vec;
 use std::ops::Index;
 use std::iter::Iterator;
-use std::f32;
+use std::{f32, io};
+use std::io::{BufRead, BufReader};
 
 use image;
 use image::DynamicImage;
 use image::Rgb;
 use image::io::Reader;
+use rand::distributions::Uniform;
+use rand::prelude::ThreadRng;
 
 use rand::Rng;
 
-fn initialise_parameters(layer_dims: Vec<usize>) -> HashMap<String, Vec<f32>> {
-    let mut parameters = HashMap::new();
-    let L = layer_dims.len();
-
-    for i in 1..L {
-        let key_w = format!("W{}", i);
-        let key_b = format!("B{}", i);
-        let size_w = layer_dims[i];
-        let size_prev = layer_dims[i - 1];
-
-        let w = (0..size_w)
-            .map(|_| (0..size_prev).map(|_| rand::thread_rng().gen::<f32>()).collect())
-            .collect();
-
-        let b = vec![0.0; size_w];
-
-        parameters.insert(key_w, w);
-        parameters.insert(key_b, b);
+fn destroy_array<T>(array: Vec<T>) {
+    drop(array); // Cela libère la mémoire, mais est généralement inutile en Rust
+}
+fn print_float_array(array: &[f32], index: usize) -> Option<f32> {
+    array.get(index).copied() // Renvoie None si l'index est hors limites, sinon renvoie la valeur
+}
+fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f64) -> Result<()> {
+    let mut file = File::create(file_path)?;
+    writeln!(file, "-- Efficiency --\n{}", efficiency)?;
+    writeln!(file, "-- W --")?;
+    for &weight in model_weight {
+        writeln!(file, "{{{}}}", weight)?;
     }
-
-    parameters
-}
-
-fn initialise_past(parameters: &HashMap<String, Vec<f32>>) -> HashMap<String, Vec<f32>> {
-    let mut past = HashMap::new();
-    for (key, value) in parameters.iter() {
-        past.insert(key.clone(), vec![0.0; value.len()]);
-    }
-    past
-}
-
-fn sigmoid(x: f32) -> f32 {
-    1.0 / (1.0 + f32::exp(-x))
-}
-
-fn forward_activation(
-    a_prev: &Vec<f32>,
-    w: &Vec<f32>,
-    b: &Vec<f32>,
-    activation: &str,
-) -> (Vec<f32>, ((&Vec<f32>, &Vec<f32>, &Vec<f32>), f32)) {
-    let z: Vec<f32> = w.iter()
-        .zip(a_prev.iter())
-        .map(|(w_val, a_val)| w_val * a_val)
-        .zip(b.iter())
-        .map(|(wa, b_val)| wa + b_val)
-        .collect();
-    let linear_cache = (a_prev, w, b);
-    let a: Vec<f32>;
-    let activation_cache: f32;
-    if activation == "sigmoid" {
-        a = z.iter().map(|z_val| sigmoid(*z_val)).collect();
-        activation_cache = z[0]; // Note: For the first element, you can take any element since it's the same for all.
-    } else {
-        a = z.iter().map(|z_val| f32::max(0.0, *z_val)).collect();
-        activation_cache = z[0];
-    }
-    (a, (linear_cache, activation_cache))
-}
-
-fn forward_propagate(x: &Vec<f32>, parameters: &HashMap<String, Vec<f32>>) -> (Vec<f32>, Vec<((&Vec<f32>, &Vec<f32>, &Vec<f32>), f32)>) {
-    let mut caches = Vec::new();
-    let mut a: &Vec<f32> = x;
-    let l = parameters.len() / 2;
-    for i in 1..l {
-        let (a_next, cache) = forward_activation(
-            &a,
-            parameters.index(&format!("W{}", i)),
-            parameters.index(&format!("B{}", i)),
-            "relu",
-        );
-        caches.push(cache);
-        a = &a_next;
-    }
-    let (a_last, cache) = forward_activation(
-        &a,
-        parameters.index(&format!("W{}", l)),
-        parameters.index(&format!("B{}", l)),
-        "sigmoid",
-    );
-    caches.push(cache);
-    (a_last, caches)
-}
-
-fn compute_regularised_cost(
-    a_last: &Vec<f32>,
-    y: &Vec<f32>,
-    caches: &Vec<(((&Vec<f32>, &Vec<f32>, &Vec<f32>), f32)>,
-    lambd: f32,
-) -> f32 {
-    let m = y.len();
-    let l = caches.len();
-    let mut total: f32 = 0.0;
-    for i in 0..l {
-        let (cache, _) = &caches[i];
-        let (a_prev, w, _) = cache;
-        let summing: f32 = w.iter().map(|w_val| w_val.powi(2)).sum();
-        total += summing;
-    }
-    let cost: f32 = -(1.0 / m as f32)
-        * (y.iter().zip(a_last.iter()).map(|(y_val, a_val)| y_val * a_val.ln()).sum::<f32>()
-        + (1.0 - y.iter().zip(a_last.iter()).map(|(y_val, a_val)| (1.0 - a_val).ln()).sum::<f32>()));
-    let cost: f32 = cost.squeeze(); // Ensure cost array of size (1,1) becomes just a singular number
-    let reg_cost = (lambd / (2.0 * m as f32)) * total;
-    let regularised_cost = cost + reg_cost;
-    regularised_cost
-}
-
-fn backward_linear(
-    dz: &Vec<f32>,
-    cache: &(&Vec<f32>, &Vec<f32>, &Vec<f32>),
-    lambd: f32,
-) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    let (a_prev, w, b) = &cache.0;
-    let m = a_prev.len();
-    let d_w: Vec<f32> = w.iter().zip(dz.iter().map(|dz_val| dz_val / m as f32)).map(|(w_val, dz_val)| w_val * dz_val).collect();
-    let d_b: Vec<f32> = dz.iter().map(|dz_val| dz_val / m as f32).collect();
-    let d_a_prev: Vec<f32> = w.iter().map(|w_val| w_val * dz.iter().map(|dz_val| dz_val / m as f32).sum()).collect();
-    (d_a_prev, d_w, d_b)
-}
-
-fn backward_activation(
-    da: &Vec<f32>,
-    cache: &((&Vec<f32>, &Vec<f32>, &Vec<f32>), f32),
-    activation: &str,
-    lambd: f32,
-) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    let (linear_cache, activation_cache) = &cache;
-    let z = *activation_cache;
-    let dz: Vec<f32>;
-    let (da_prev, dw, db): (Vec<f32>, Vec<f32>, Vec<f32>);
-    if activation == "relu" {
-        dz = da.iter().map(|da_val| if z <= 0.0 { 0.0 } else { *da_val }).collect();
-        let result = backward_linear(&dz, linear_cache, lambd);
-        da_prev = result.0;
-        dw = result.1;
-        db = result.2;
-    } else {
-        dz = da.iter().zip(z).map(|(da_val, z_val)| da_val * sigmoid(z_val) * (1.0 - sigmoid(z_val))).collect();
-        let result = backward_linear(&dz, linear_cache, lambd);
-        da_prev = result.0;
-        dw = result.1;
-        db = result.2;
-    }
-    (da_prev, dw, db)
-}
-
-fn backward_propagate(
-    a_last: &Vec<f32>,
-    y: &Vec<f32>,
-    caches: &Vec<(((&Vec<f32>, &Vec<f32>, &Vec<f32>), f32)>,
-    lambd: f32,
-) -> HashMap<String, Vec<f32>> {
-    let mut gradients: HashMap<String, Vec<f32>> = HashMap::new();
-    let l = caches.len();
-    let y_vec = &y[0..a_last.len()];
-    let d_a_last: Vec<f32> = a_last.iter().zip(y_vec).map(|(a_last_val, y_val)| -(y_val / a_last_val) + (1.0 - y_val) / (1.0 - a_last_val)).collect();
-    let l_cache = &caches[l - 1];
-    let (d_a, d_w, d_b) = backward_activation(&d_a_last, &l_cache, "sigmoid", lambd);
-    gradients.insert("dA".to_string() + &(l - 1).to_string(), d_a);
-    gradients.insert("dW".to_string() + &(l).to_string(), d_w);
-    gradients.insert("dB".to_string() + &(l).to_string(), d_b);
-    for i in (0..l - 1).rev() {
-        let l_cache = &caches[i];
-        let (d_a, d_w, d_b) = backward_activation(&gradients[&("dA".to_string() + &(i + 1).to_string())], l_cache, "relu", lambd);
-        gradients.insert("dA".to_string() + &(i).to_string(), d_a);
-        gradients.insert("dW".to_string() + &(i + 1).to_string(), d_w);
-        gradients.insert("dB".to_string() + &(i + 1).to_string(), d_b);
-    }
-    gradients
-}
-
-fn gradient_descent_momentum(
-    parameters: &HashMap<String, Vec<f32>>,
-    gradients: &HashMap<String, Vec<f32>,
-        learning_rate: f32,
-        beta: f32,
-        past: &HashMap<String, Vec<f32>,
-) -> HashMap<String, Vec<f32>> {
-    let l = parameters.len() / 2;
-    for i in 1..=l {
-        let key_w = "W".to_string() + &(i).to_string();
-        let key_b = "B".to_string() + &(i).to_string();
-        let beta_d_w = beta * past[&("dW".to_string() + &(i).to_string())]
-            + (1.0 - beta) * &gradients[&("dW".to_string() + &(i).to_string())];
-        let beta_d_b = beta * past[&("dB".to_string() + &(i).to_string())]
-            + (1.0 - beta) * &gradients[&("dB".to_string() + &(i).to_string())];
-        parameters.insert(
-            key_w.clone(),
-            parameters[&key_w]
-                .iter()
-                .zip(&beta_d_w)
-                .map(|(w_val, beta_d_w_val)| w_val - learning_rate * beta_d_w_val)
-                .collect(),
-        );
-        parameters.insert(
-            key_b.clone(),
-            parameters[&key_b]
-                .iter()
-                .zip(&beta_d_b)
-                .map(|(b_val, beta_d_b_val)| b_val - learning_rate * beta_d_b_val)
-                .collect(),
-        );
-    }
-    parameters
-}
-
-fn batch_minibatch(
-    x: &Vec<f32>,
-    y: &Vec<f32>,
-    minibatch_size: usize,
-) -> Vec<(&Vec<f32>, &Vec<f32>)> {
-    let m = y.len();
-    let mut minibatches: Vec<(&Vec<f32>, &Vec<f32>)> = Vec::new();
-    let num_minibatches = m / minibatch_size;
-    for i in 0..num_minibatches {
-        let start = i * minibatch_size;
-        let end = (i + 1) * minibatch_size;
-        let x_minibatch = &x[start..end];
-        let y_minibatch = &y[start..end];
-        minibatches.push((x_minibatch, y_minibatch));
-    }
-    if m % minibatch_size != 0 {
-        let x_minibatch = &x[(num_minibatches * minibatch_size)..m];
-        let y_minibatch = &y[(num_minibatches * minibatch_size)..m];
-        minibatches.push((x_minibatch, y_minibatch));
-    }
-    minibatches
-}
-
-fn nn_model(
-    x: &Vec<f32>,
-    y: &Vec<f32>,
-    layers_dims: &Vec<usize>,
-    learning_rate: f32,
-    beta: f32,
-    lambd: f32,
-    epochs: usize,
-    minibatch_size: usize,
-) -> HashMap<String, Vec<f32>> {
-    let mut costs = Vec::new();
-    let mut parameters = initialise_parameters(layers_dims.clone());
-    let mut past = initialise_past(&parameters);
-    let m = y.len();
-    for epoch in 0..epochs {
-        let minibatches = batch_minibatch(&x, &y, minibatch_size);
-        for minibatch in minibatches {
-            let (minibatch_x, minibatch_y) = minibatch;
-            let (a_last, caches) = forward_propagate(minibatch_x, &parameters);
-            let cost = compute_regularised_cost(&a_last, minibatch_y, &caches, lambd);
-            let gradients = backward_propagate(&a_last, minibatch_y, &caches, lambd);
-            parameters = gradient_descent_momentum(&parameters, &gradients, learning_rate, beta, &past);
-        }
-        if epoch % 50 == 0 {
-            println!("Cost after epoch {}: {}", epoch, cost);
-            costs.push(cost);
-        }
-    }
-    parameters
-}
-
-fn predict(x: &Vec<f32>, parameters: &HashMap<String, Vec<f32>>) -> Vec<f32> {
-    let a_last = forward_propagate(x, parameters).0;
-    a_last.iter()
-        .map(|a_last_val| if *a_last_val > 0.5 { 1.0 } else { 0.0 })
-        .collect()
-}
-
-fn load_images_from_directory(path: &str) -> Result<(Vec<Vec<f32>>, Vec<f32>), image::ImageError> {
-    let paths = fs::read_dir(path)?
-        .map(|entry| entry.unwrap().path())
-        .collect::<Vec<_>>();
-    let mut x_data = Vec::new();
-    let mut y_labels = Vec::new();
-    for path in paths {
-        let x = image::open(&path)?.to_luma8();
-        let x = x.to_bytes();
-        x_data.push(x.iter().map(|x| *x as f32 / 255.0).collect());
-        if path.to_str().unwrap().contains("ckt_sets") {
-            y_labels.push(1.0);
-        } else {
-            y_labels.push(0.0);
-        }
-    }
-    Ok((x_data, y_labels))
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (x_data, y_labels) = load_images_from_directory("C:/Users/Tim/Documents/Python/Neural_Network/resized_ckt_sets")?;
-    let (x_data2, mut y_labels2) = load_images_from_directory("C:/Users/Tim/Documents/Python/Neural_Network/resized_non_ckt")?;
-    let mut x_data = x_data;
-    x_data.append(&mut x_data2);
-    y_labels.append(&mut y_labels2);
-    let layers_dims = vec![x_data[0].len(), 16, 1];
-    let train_data = train_test_split(&x_data, &y_labels, 0.85);
-    let (train_x, test_x, train_y, test_y) = train_data;
-    let parameters = nn_model(
-        train_x,
-        train_y,
-        &layers_dims,
-        0.0090,
-        0.90,
-        6.3,
-        450,
-        64,
-    );
-    let predict_train = predict(&train_x, &parameters);
-    let sample_train = predict_train.len();
-    let accuracy_train = (predict_train
-        .iter()
-        .zip(train_y.iter())
-        .map(|(predict_train_val, train_y_val)| (predict_train_val == train_y_val) as u32)
-        .sum::<u32>() as f32)
-        / sample_train as f32;
-    println!("Accuracy of training sets: {}", accuracy_train);
-    let predict_test = predict(&test_x, &parameters);
-    let sample_test = predict_test.len();
-    let accuracy_test = (predict_test
-        .iter()
-        .zip(test_y.iter())
-        .map(|(predict_test_val, test_y_val)| (predict_test_val == test_y_val) as u32)
-        .sum::<u32>() as f32)
-        / sample_test as f32;
-    println!("Accuracy of testing sets: {}", accuracy_test);
     Ok(())
+}
+
+fn load_model_linear(file_path: &Path) -> io::Result<Vec<f32>> {
+    let file = File::open(file_path)?;
+    let reader = BufReader::new(file);
+
+    let mut weights = Vec::new();
+    let mut read_weights = false;
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim() == "-- W --" {
+            read_weights = true;
+            continue;
+        }
+        if read_weights {
+            if let Some(weight) = line.trim().strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                if let Ok(weight) = weight.parse::<f32>() {
+                    weights.push(weight);
+                }
+            }
+        }
+    }
+
+    Ok(weights)
+}
+
+fn init_model_weights(cols_x_len: usize, rows_w_len: usize) -> Vec<f32> {
+    let mut rng = rand::thread_rng();
+    init_weights_with_random(&mut rng, cols_x_len, rows_w_len)
+}
+
+fn init_weights_with_random(rng: &mut ThreadRng, cols_x_len: usize, rows_w_len: usize) -> Vec<f32> {
+    let mut between = Uniform::from(-1.0..1.0);
+    let mut weights = vec![0.0; rows_w_len];
+    for weight in weights.iter_mut().take(cols_x_len + 1) {
+        *weight = between.sample(rng);
+    }
+    weights
+}
+
+fn predict_linear_model_classification_float(model_weights: &[f32], inputs: &[f32]) -> i32 {
+    if model_weights.len() != inputs.len() + 1 {
+        panic!("Les longueurs des poids et des entrées ne correspondent pas.");
+    }
+
+    let mut res = 0.0;
+    for (&weight, &input) in model_weights.iter().skip(1).zip(inputs.iter()) {
+        res += weight * input;
+    }
+    let total_sum = model_weights[0] + res;
+
+    if total_sum >= 0.0 { 1 } else { -1 }
+}
+
+fn predict_linear_model_classification_int(model_weights: &[f32], inputs: &[i32]) -> i32 {
+    if model_weights.len() != inputs.len() + 1 {
+        panic!("Les longueurs des poids et des entrées ne correspondent pas.");
+    }
+
+    let mut res = 0.0;
+    for (&weight, &input) in model_weights.iter().skip(1).zip(inputs.iter()) {
+        res += weight * input as f32; // Conversion des entrées en f32 pour la multiplication
+    }
+    let total_sum = model_weights[0] + res;
+
+    if total_sum >= 0.0 { 1 } else { -1 }
+}
+
+fn train_linear_float(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: usize, rows_w_len: usize, iter: usize) {
+    let learning_rate = 0.001;
+
+    for _ in 0..iter {
+        let k = rand::thread_rng().gen_range(0..rows_x_len);
+        let gxk = predict_linear_model_classification_float(w, &x[k]);
+        let yk = y[k];
+        let diff = yk as f32 - gxk as f32;
+
+        w[0] = w[0] + learning_rate * diff * 1.0;
+        for j in 1..rows_w_len {
+            w[j] = w[j] + learning_rate * diff * x[k][j - 1];
+        }
+    }
+}
+
+fn train_linear_int(x: &[Vec<i32>], y: &[i32], w: &mut [f32], rows_x_len: usize, rows_w_len: usize, iter: usize) {
+    let learning_rate = 0.001;
+
+    for _ in 0..iter {
+        let k = rand::thread_rng().gen_range(0..rows_x_len);
+        let gxk = predict_linear_model_classification_int(w, &x[k]);
+        let yk = y[k];
+        let diff = yk - gxk;
+        w[0] = w[0] + learning_rate * diff as f32;
+
+        for j in 1..rows_w_len {
+            w[j] = w[j] + learning_rate * diff as f32 * x[k][j - 1] as f32;
+        }
+    }
+}
+
+fn load_data(path: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
+    let file = File::open(Path::new(path))?;
+    let reader = BufReader::new(file);
+
+    let mut features: Vec<Vec<f32>> = Vec::new();
+    let mut labels: Vec<i32> = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        let values: Vec<&str> = line.split(',').collect();
+
+        if let Some((last, elements)) = values.split_last() {
+            let label = last.parse::<i32>().unwrap_or_else(|_| panic!("Erreur de conversion du label"));
+            let feature = elements.iter()
+                .map(|&x| x.parse::<f32>().unwrap_or_else(|_| panic!("Erreur de conversion de la caractéristique")))
+                .collect();
+
+            features.push(feature);
+            labels.push(label);
+        }
+    }
+
+    Ok((features, labels))
+}
+
+fn main() {
+    // Charger les données d'entraînement et de test
+    let (x_train, y_train) = load_data("chemin_vers_données_entrainement");
+    let (x_test, y_test) = load_data("chemin_vers_données_test");
+
+    let rows_x_len = x_train.len();
+    let rows_w_len = x_train[0].len(); // Assurez-vous que c'est correct pour votre modèle
+
+    // Initialisation des poids du modèle
+    let mut weights = init_model_weights(rows_x_len, rows_w_len);
+
+    // Entraînement du modèle
+    train_linear_float(&x_train, &y_train, &mut weights, rows_x_len, rows_w_len, N_ITER);
+
+    // Test du modèle et calcul de la performance
+    let mut final_result = 0;
+    for (x, &y) in x_test.iter().zip(y_test.iter()) {
+        let result = predict_linear_model_classification_float(&weights, x);
+        if result == y {
+            final_result += 1;
+        }
+    }
+    let performance = final_result as f32 / y_test.len() as f32 * 100.0;
+    println!("Performance: {}%", performance);
+
+    // Sauvegarde des poids du modèle si la performance est satisfaisante
+    if performance > MAX_POURCENTAGE {
+        save_model_linear(&weights, Path::new("./save/best.txt"), performance as f64).unwrap();
+    }
 }
