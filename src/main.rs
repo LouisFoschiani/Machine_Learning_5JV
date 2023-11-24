@@ -1,9 +1,11 @@
+#[warn(non_snake_case)]
+
 use image::{self, GenericImageView};
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::{Path};
 
 fn load_image_data(base_path: &Path, categories: &[&str]) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
     let mut features = Vec::new();
@@ -51,11 +53,16 @@ fn predict_linear_model_classification(model_weights: &[f32], inputs: &[f32]) ->
     }
     let total_sum = model_weights[0] + res;
 
-    if total_sum >= 0.0 { 1 } else { -1 }
+    match total_sum {
+        sum if sum > 0.5 => 1,
+        sum if sum > -0.5 => 0,
+        _ => 2,
+    }
 }
 
-fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: usize, rows_w_len: usize, iter: usize) {
+fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: usize, rows_w_len: usize, iter: usize) -> f32 {
     let learning_rate = 0.001;
+    let mut last_cost = f32::MAX;
 
     for _ in 0..iter {
         let k = rand::thread_rng().gen_range(0..rows_x_len);
@@ -67,7 +74,23 @@ fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: usiz
         for j in 1..rows_w_len {
             w[j] = w[j] + learning_rate * diff * x[k][j - 1];
         }
+
+        // Calcul de l'erreur quadratique moyenne
+        let cost = x.iter().zip(y.iter())
+            .map(|(features, &label)| {
+                let prediction = predict_linear_model_classification(w, features);
+                (label as f32 - prediction as f32).powi(2)
+            })
+            .sum::<f32>() / x.len() as f32;
+
+        // Vérifier la convergence
+        if (last_cost - cost).abs() < 1e-5 {
+            break;
+        }
+        last_cost = cost;
     }
+
+    last_cost
 }
 
 fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f64) -> Result<(), io::Error> {
@@ -92,7 +115,9 @@ fn main() -> io::Result<()> {
     let rows_w_len = train_features[0].len();
     let mut weights = init_model_weights(rows_x_len, rows_w_len);
 
-    train_linear_model(&train_features, &train_labels, &mut weights, rows_x_len, rows_w_len, 10000);
+    // Entraînement du modèle avec contrôle de convergence
+    let final_cost = train_linear_model(&train_features, &train_labels, &mut weights, rows_x_len, rows_w_len, 1000);
+    println!("Erreur finale : {}", final_cost);
 
     // Test du modèle et calcul de la performance
     let mut final_result = 0;
