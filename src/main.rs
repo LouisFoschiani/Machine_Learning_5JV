@@ -4,7 +4,7 @@ use image::{self, GenericImageView};
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path};
 
 fn load_image_data(base_path: &Path, categories: &[&str]) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
@@ -103,50 +103,98 @@ fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f64) ->
     Ok(())
 }
 
-fn main() -> io::Result<()> {
-    let base_training_path = Path::new("images/Unknown");
-    let base_testing_path = Path::new("images/Test");
-    let categories = ["Avocado", "Tomato", "Banana"];
+fn load_model_weights(file_path: &Path) -> io::Result<(Vec<f32>, f64)> {
+    let file = File::open(file_path)?;
+    let reader = BufReader::new(file);
+    let mut weights = Vec::new();
+    let mut efficiency = 0.0;
+    let mut read_efficiency = false;
 
-    let (train_features, train_labels) = load_image_data(base_training_path, &categories)?;
-    let (test_features, test_labels) = load_image_data(base_testing_path, &categories)?;
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with("-- Efficiency --") {
+            read_efficiency = true;
+            continue;
+        }
 
-    let rows_x_len = train_features.len();
-    let rows_w_len = train_features[0].len();
-    let mut weights = init_model_weights(rows_x_len, rows_w_len);
+        if read_efficiency {
+            efficiency = line.parse::<f64>().unwrap_or_else(|e| {
+                eprintln!("Erreur lors de la conversion de l'efficacité: {}", e);
+                0.0
+            });
+            read_efficiency = false;
+            continue;
+        }
 
-    // Entraînement du modèle avec contrôle de convergence
-    let final_cost = train_linear_model(&train_features, &train_labels, &mut weights, rows_x_len, rows_w_len, 1000);
-    println!("Erreur finale : {}", final_cost);
-
-    // Test du modèle et calcul de la performance
-    let mut final_result = 0;
-    for (x, &y) in test_features.iter().zip(test_labels.iter()) {
-        let result = predict_linear_model_classification(&weights, x);
-        if result == y {
-            final_result += 1;
+        if line.starts_with("{") && line.ends_with("}") {
+            let weight_str = &line[1..line.len()-1]; // Retirer les accolades
+            match weight_str.trim().parse::<f32>() {
+                Ok(weight) => weights.push(weight),
+                Err(e) => eprintln!("Erreur lors de la conversion d'un poids: {}", e),
+            }
         }
     }
-    let performance = final_result as f32 / test_labels.len() as f32 * 100.0;
-    println!("Performance: {}%", performance);
 
-    // Sauvegarde des poids du modèle si la performance est satisfaisante
-    let file_path = Path::new("model_weights.txt");
-    save_model_linear(&weights, file_path, performance as f64)?;
+    Ok((weights, efficiency))
+}
 
-    // Ajout de la prédiction pour une image spécifique
-    let image_path = Path::new("images/banane.jpg");
-    let image_features = process_image(image_path)?;
-    let prediction = predict_linear_model_classification(&weights, &image_features);
+fn main() -> io::Result<()> {
+    let iterations = 10;
+    let weights_file_path = Path::new("model_weights.txt");
 
-    // Afficher la catégorie prédite
-    let category = match prediction {
-        1 => "Avocado",
-        2 => "Tomato",
-        3 => "Banana",
-        _ => "Inconnu",
+    // Charger l'efficacité actuelle si le fichier existe
+    let mut last_efficiency = if weights_file_path.exists() {
+        let (_, efficiency) = load_model_weights(weights_file_path)?;
+        efficiency
+    } else {
+        0.0
     };
-    println!("Catégorie prédite: {}", category);
 
+    for iter in 0..iterations {
+        println!("----------------------");
+        println!("Iteration: {}", iter + 1);
+        let base_training_path = Path::new("images/Unknown");
+        let base_testing_path = Path::new("images/Test");
+        let categories = ["Avocado", "Tomato", "Banana"];
+
+        let (train_features, train_labels) = load_image_data(base_training_path, &categories)?;
+        let (test_features, test_labels) = load_image_data(base_testing_path, &categories)?;
+
+        let rows_x_len = train_features.len();
+        let rows_w_len = train_features[0].len();
+        let mut weights = init_model_weights(rows_x_len, rows_w_len);
+
+        let final_cost = train_linear_model(&train_features, &train_labels, &mut weights, rows_x_len, rows_w_len, 1000);
+        println!("Erreur finale : {}", final_cost);
+
+        let mut correct_predictions = 0;
+        for (x, &y) in test_features.iter().zip(test_labels.iter()) {
+            let result = predict_linear_model_classification(&weights, x);
+            if result == y {
+                correct_predictions += 1;
+            }
+        }
+        let performance = correct_predictions as f32 / test_labels.len() as f32 * 100.0;
+        println!("Performance: {}%", performance);
+        println!("Last Performance: {}%", last_efficiency);
+
+        // Mettre à jour le fichier de poids si la performance est meilleure
+        if performance > last_efficiency as f32 {
+            save_model_linear(&weights, weights_file_path, performance as f64)?;
+            println!("Poids sauvegardés dans model_weights.txt");
+            last_efficiency = performance as f64;
+        }
+
+        let image_path = Path::new("images/banane.jpg");
+        let image_features = process_image(image_path)?;
+        let prediction = predict_linear_model_classification(&weights, &image_features);
+        let category = match prediction {
+            1 => "Avocado",
+            2 => "Tomato",
+            3 => "Banana",
+            _ => "Inconnu",
+        };
+        println!("Catégorie prédite: {}", category);
+    }
     Ok(())
 }
