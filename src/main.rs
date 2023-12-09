@@ -89,7 +89,7 @@ fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: usiz
             .sum::<f32>() / x.len() as f32;
 
         // Check for convergence
-        if (last_cost - cost).abs() < 1e-5 {
+        if cost > last_cost || (last_cost - cost).abs() < 1e-5 {
             break;
         }
         last_cost = cost;
@@ -142,7 +142,7 @@ fn load_model_weights(file_path: &Path) -> io::Result<(Vec<f32>, f64)> {
 
 fn main() -> io::Result<()> {
     let iterations = 10;
-    let weights_file_path = Path::new("model_weights.txt");
+    let weights_file_path = Path::new("G:\\Machine_Learning_5JV\\model_weights_Banana.txt");
 
     let mut last_efficiency = if weights_file_path.exists() {
         let (_, efficiency) = load_model_weights(weights_file_path)?;
@@ -154,10 +154,10 @@ fn main() -> io::Result<()> {
     for iter in 0..iterations {
         println!("----------------------");
         println!("Iteration: {}", iter + 1);
-        let base_training_path = Path::new("images/Train");
+        let base_training_path = Path::new("images/Training");
         let base_testing_path = Path::new("images/Test");
-        let target_category = "YourTargetCategory"; // Specify your target category
-        let non_target_category = "YourNonTargetCategory"; // Specify your non-target category
+        let target_category = "Banana"; // Specify your target category
+        let non_target_category = "NonBanana"; // Specify your non-target category
 
         let (train_features, train_labels) = load_image_data(base_training_path, target_category, non_target_category)?;
         let (test_features, test_labels) = load_image_data(base_testing_path, target_category, non_target_category)?;
@@ -181,8 +181,10 @@ fn main() -> io::Result<()> {
 
         if mean_squared_error < last_efficiency as f32 {
             save_model_linear(&weights, weights_file_path, mean_squared_error as f64)?;
-            println!("Weights saved in model_weights.txt");
+            println!("Weights saved in model_weights_Banana.txt");
             last_efficiency = mean_squared_error as f64;
+        }else{
+            println!("NO SAVE {} : {}", mean_squared_error, last_efficiency);
         }
     }
     Ok(())
