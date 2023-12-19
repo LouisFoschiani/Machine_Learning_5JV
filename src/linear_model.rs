@@ -1,185 +1,239 @@
-extern crate ndarray;
-extern crate image;
+#[warn(non_snake_case)]
 
-use ndarray::{Array, Array1, Array2};
-use image::{DynamicImage, GenericImageView, ImageError, open};
-use std::fs;
-use std::path::Path;
+use image::{self, GenericImageView};
+use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
-use std::fmt;
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, Write};
+use std::path::{Path};
 
-// Structure du modèle linéaire
-pub struct LinearModel {
-    weights: Array1<f32>,
+fn load_image_data(base_path: &Path, target_category: &str, non_target_category: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
+    let mut features = Vec::new();
+    let mut labels = Vec::new();
+
+    // Load target category images
+    let target_path = base_path.join(target_category);
+    for entry in fs::read_dir(target_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            let image_features = process_image(&path)?;
+            features.push(image_features);
+            labels.push(1);
+        }
+    }
+
+    // Load non-target category images
+    let non_target_path = base_path.join(non_target_category);
+    for entry in fs::read_dir(non_target_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            let image_features = process_image(&path)?;
+            features.push(image_features);
+            labels.push(-1);
+        }
+    }
+
+    Ok((features, labels))
+}
+
+fn process_image(path: &Path) -> io::Result<Vec<f32>> {
+    let img = image::open(path).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let features = img.pixels()
+        .flat_map(|(_, _, pixel)| pixel.0.to_vec())
+        .map(|value| value as f32 / 255.0)
+        .collect();
+    Ok(features)
+}
+
+fn init_model_weights(cols_x_len: usize, rows_w_len: usize) -> Vec<f32> {
+    let mut rng = rand::thread_rng();
+    let between = Uniform::from(-1.0..1.0);
+    let mut weights = vec![0.0; rows_w_len];
+    for weight in weights.iter_mut().take(cols_x_len + 1) {
+        *weight = between.sample(&mut rng);
+    }
+    weights
+}
+
+fn predict_linear_model_classification(model_weights: &[f32], inputs: &[f32]) -> i32 {
+    let mut res = 0.0;
+    for (&weight, &input) in model_weights.iter().skip(1).zip(inputs.iter()) {
+        res += weight * input;
+    }
+    let total_sum = model_weights[0] + res;
+    if total_sum >= 0.0 {
+        1
+    } else {
+        -1
+    }
+}
+
+fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: i32, rows_w_len: i32, iter: i32) {
+    let learning_rate = 0.001;
+
+    for _ in 0..iter {
+        let k = rand::thread_rng().gen_range(0..rows_x_len) as usize;
+        let gxk = predict_linear_model_classification(w, &x[k]) as f32;
+        let yk = y[k] as f32;
+        let diff = yk - gxk;
+
+        w[0] = w[0] + learning_rate * diff;
+        for j in 1..rows_w_len as usize {
+            w[j] = w[j] + learning_rate * diff * x[k][j - 1];
+        }
+    }
 }
 
 
-#[derive(Debug, PartialEq)]
-pub enum ImageClass {
-    Avocado,
-    Tomato,
-    Banana,
-}
-
-
-impl fmt::Display for ImageClass {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ImageClass::Avocado => write!(f, "Avocado"),
-            ImageClass::Tomato => write!(f, "Tomato"),
-            ImageClass::Banana => write!(f, "Banana"),
-        }
+fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f32) -> Result<(), io::Error> {
+    let mut file = File::create(file_path)?;
+    writeln!(file, "-- Efficiency --\n{}", efficiency)?;
+    writeln!(file, "-- Weights --")?;
+    for &weight in model_weight {
+        writeln!(file, "{{{}}}", weight)?;
     }
-}
-
-
-impl LinearModel {
-    pub fn new(input_size: usize) -> Self {
-        let mut rng = rand::thread_rng();
-        let weights = Array::from_shape_fn(input_size, |_| {
-            let weight: f32 = rng.gen_range(-1.0..1.0);
-            weight
-        });
-
-        Self { weights }
-    }
-
-    pub fn train(&mut self, features: &Array2<f32>, labels: &Array1<f32>, learning_rate: f32, num_iterations: usize) {
-        for _ in 0..num_iterations {
-            let predictions = self.predict(features);
-            let errors = labels - &predictions;
-
-            // Mise à jour des poids
-            let gradient = features.t().dot(&errors);
-            self.weights -= &(&gradient * learning_rate);
-        }
-    }
-
-
-    pub fn predict(&self, features: &Array2<f32>) -> Array1<f32> {
-        features.dot(&self.weights)
-    }
-}
-
-pub fn main() -> Result<(), ImageError> {
-    let training_data = load_images_from_directory("images/Training")?;
-    let test_data = load_images_from_directory("images/Test")?;
-    let unknown_data = load_images_from_directory("images/Unknown")?;
-
-    // Définissez les caractéristiques (features) et les étiquettes (labels) à partir des données d'entraînement.
-    let mut features = Array::zeros((training_data.len(), 3)); // 3 features (R, G, B)
-    let mut labels = Array1::zeros(training_data.len());
-
-    for (i, (image, label)) in training_data.iter().enumerate() {
-        let pixels = to_normalized_vec(image.clone());
-        features.row_mut(i).assign(&Array1::from(pixels));
-        labels[i] = match label {
-            ImageClass::Avocado => 1.0,
-            ImageClass::Tomato => 2.0,
-            ImageClass::Banana => 3.0,
-            // Ajoutez d'autres classes au besoin
-        };
-    }
-
-    // Créez et entraînez le modèle linéaire.
-    let input_size = features.shape()[1];
-    let mut model = LinearModel::new(input_size);
-    model.train(&features, &labels, 0.01, 1000);
-
-    // Testez le modèle sur des données de test.
-    let mut correct_predictions = 0;
-    let mut problematic_images = Vec::new();
-    for (image, label) in test_data.iter() {
-        let pixels = to_normalized_vec(image.clone());
-        if pixels.is_empty() {
-            problematic_images.push(label.to_string());
-            continue;  // Ignorez cette image problématique
-        }
-        let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
-        let prediction = model.predict(&features);
-        let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
-
-        if predicted_class_label == *label {
-            correct_predictions += 1;
-        }
-    }
-
-    let accuracy = correct_predictions as f32 / test_data.len() as f32;
-    println!("Accuracy: {:.2}%", accuracy * 100.0);
-
-    if !problematic_images.is_empty() {
-        println!("Problematic images: {:?}", problematic_images);
-    }
-
-    println!("Accuracy: {:.2}%", accuracy * 100.0);
-
-    // Classification des images inconnues depuis le répertoire "images/Unknown"
-    for (image, label) in unknown_data.iter() {
-        let pixels = to_normalized_vec(image.clone());
-        if pixels.is_empty() {
-            problematic_images.push(label.to_string());
-            continue;  // Ignorez cette image problématique
-        }
-        let features = Array2::from_shape_vec((1, pixels.len()), pixels).unwrap();
-        let prediction = model.predict(&features);
-        let predicted_class_label = if prediction[0] > 0.5 { ImageClass::Avocado } else { ImageClass::Banana }; // Binaire
-
-        let predicted_class_str = match predicted_class_label {
-            ImageClass::Avocado => "Avocado",
-            ImageClass::Tomato => "Tomato",
-            ImageClass::Banana => "Banana",
-            // Ajoutez d'autres classes au besoin
-        };
-
-        println!("Predicted class: {} (True class: {:?})", predicted_class_str, label);
-    }
-
     Ok(())
 }
-fn load_images_from_directory(directory_path: &str) -> Result<Vec<(DynamicImage, ImageClass)>, ImageError> {
-    let mut images = Vec::new();
-    let paths = fs::read_dir(directory_path)?;
 
-    for path in paths {
-        let entry = path?;
-        let file_path = entry.path();
-        if file_path.is_file() && is_valid_jpeg(&file_path) {
-            let image = open(file_path.clone())?;
-            let image_class = match file_path.parent() {
-                Some(parent) => match parent.file_name().and_then(|s| s.to_str()) {
-                    Some("Avocado") => ImageClass::Avocado,
-                    Some("Tomato") => ImageClass::Tomato,
-                    Some("Banana") => ImageClass::Banana,
-                    // Ajoutez d'autres classes au besoin
-                    _ => ImageClass::Avocado, // Par défaut
-                },
-                _ => ImageClass::Avocado, // Par défaut
-            };
-            images.push((image, image_class));
+fn load_model_weights(file_path: &Path, colX: i32, rowW: i32) -> io::Result<(Vec<f32>, f32)> {
+
+    let mut weights = Vec::new();
+    let mut efficiency = 0.0;
+
+    if fs::metadata(file_path).is_ok() {
+
+        let file = File::open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut read_efficiency = false;
+
+        for line in reader.lines() {
+            let line = line?;
+            if line.starts_with("-- Efficiency --") {
+                read_efficiency = true;
+                continue;
+            }
+
+            if read_efficiency {
+                efficiency = line.parse::<f32>().unwrap_or_else(|_| 0.0);
+                read_efficiency = false;
+                continue;
+            }
+
+            if line.starts_with("{") && line.ends_with("}") {
+                let weight_str = &line[1..line.len()-1];
+                match weight_str.trim().parse::<f32>() {
+                    Ok(weight) => weights.push(weight),
+                    Err(_) => continue,
+                }
+            }
+        }
+    } else {
+        weights = init_model_weights(colX as usize, rowW as usize)
+    }
+
+
+
+    Ok((weights, efficiency))
+}
+
+fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
+    let rows_x_len = x.len();
+    let cols_x_len = if !x.is_empty() { x[0].len() } else { 0 };
+    let rows_w_len = cols_x_len + 1;
+    (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
+}
+
+
+pub(crate) fn main() -> io::Result<()> {
+
+    let CHECK = true;
+
+    let iterations = 150;
+    let weights_file_path = Path::new("model_weights.txt");
+
+    let base_training_path = Path::new("images/Training");
+    let base_test_path = Path::new("images/Test");
+    let target_category = "Tomato";
+    let non_target_category = "Banana";
+
+    if CHECK == true{
+
+        let image_path = Path::new("images\\CHECK\\Banana\\C.png"); // Chemin vers l'image à tester
+
+        let (train_features, _) = load_image_data(base_training_path, target_category, non_target_category)?;
+
+        let (_, colsXLen, rowsWLen) = set_var(&train_features);
+        let (w, _) = load_model_weights(weights_file_path, colsXLen, rowsWLen)?;
+
+        // Traitement de l'image à tester
+        let image_features = process_image(&image_path)?;
+
+        // Faire une prédiction
+        let prediction = predict_linear_model_classification(&w, &image_features);
+
+        // Afficher le résultat
+        if prediction == 1 {
+            println!("C'est une TOMATE");
+        } else {
+            println!("C'est une BANANE");
+        }
+
+
+    }else{
+        for iter in 0..iterations {
+
+            println!("------- ITERATION {} -------", iter);
+            println!("\n");
+
+            // TRAINING
+
+            let (train_features, train_labels) = load_image_data(base_training_path, target_category, non_target_category)?;
+
+            let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
+
+            let (mut w, max_percent) = load_model_weights(weights_file_path, colsXLen, rowsWLen)?;
+
+            train_linear_model(&train_features, &train_labels, &mut w, rowsXLen, rowsWLen, 1000);
+
+            let mut final_result = 0;
+
+            for i in 0..rowsXLen {
+                let result = predict_linear_model_classification(&w, &train_features[i as usize]);
+                if result == train_labels[i as usize] {
+                    final_result += 1
+                }
+            }
+            println!("Training Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
+
+
+            // TESTING
+            final_result = 0;
+            let (train_features, train_labels) = load_image_data(base_test_path, target_category, non_target_category)?;
+            let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
+
+            let mut final_result = 0;
+
+            for i in 0..rowsXLen {
+                let result = predict_linear_model_classification(&w, &train_features[i as usize]);
+                if result == train_labels[i as usize] {
+                    final_result += 1
+                }
+            }
+
+            println!("Test Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
+            let success = final_result as f32 / train_labels.len() as f32 * 100.0;
+            if success > max_percent{
+                println!("Update weights : {} > {}", success, max_percent);
+                save_model_linear(&w, weights_file_path, success).expect("TODO: Could not save weights");
+            }
+
+            println!("\n");
+
         }
     }
 
-    Ok(images)
-}
 
-fn is_valid_jpeg(image_path: &Path) -> bool {
-    use image::io::Reader;
-    if let Ok(reader) = Reader::open(image_path) {
-        if let Ok(_) = reader.with_guessed_format() {
-            return true;
-        }
-    }
-    false
-}
-
-fn to_normalized_vec(image: DynamicImage) -> Vec<f32> {
-    image.pixels().flat_map(|pixel| {
-        let pixel = pixel.2; // Extraction du pixel Rgba<u8>
-        let (r, g, b) = (
-            pixel[0] as f32 / 255.0,
-            pixel[1] as f32 / 255.0,
-            pixel[2] as f32 / 255.0,
-        );
-        vec![r, g, b]
-    }).collect()
+    Ok(())
 }
