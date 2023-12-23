@@ -140,7 +140,7 @@ impl MLP {
             println!("Époque {}: Erreur moyenne = {}", epoch + 1, total_error / training_data.len() as f64);
         }
     }
-    fn save_weights(&self, file_path: &str) -> io::Result<()> {
+    pub fn save_weights(&self, file_path: &str) -> io::Result<()> {
         let serialized_weights = serde_json::to_string(&self.weights).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let mut file = File::create(file_path)?;
         writeln!(file, "{}", serialized_weights)?;
@@ -150,6 +150,18 @@ impl MLP {
         let outputs = self.forward_propagate(inputs);
         outputs.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(index, _)| index).unwrap()
     }
+
+    pub fn predict_image(&mut self, img_path: &str, categories: &[&str]) -> Result<String, String> {
+        let img = image::open(img_path)
+            .map_err(|e| e.to_string())?
+            .to_luma8();
+        let pixels: Vec<f64> = img.pixels().map(|p| p[0] as f64 / 255.0).collect();
+        let predicted_index = self.predict(pixels);
+        categories.get(predicted_index)
+            .map(|&category| category.to_string())
+            .ok_or("Catégorie non trouvée".to_string())
+    }
+
 }
 
 fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
@@ -172,8 +184,8 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
 
 fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
     let mut correct_predictions = 0;
-    for (pixels, expected) in test_data {
-        let predicted = mlp.predict(pixels);
+    for (pixels, expected) in &test_data { // Utiliser une référence ici
+        let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
         if predicted == expected.iter().position(|&r| r == 1.0).unwrap() {
             correct_predictions += 1;
         }
@@ -185,11 +197,20 @@ fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
 pub(crate) fn main() {
     let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
     let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
+    let categories = ["Banana", "Avocado", "Tomato"];
 
     let taille_image = training_data[0].0.len();
-    let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]); // Exemple de configuration du réseau
+    let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-    mlp.train(training_data, 0.01, 1000);
-
+    mlp.train(training_data, 0.01, 30);
     evaluate_model(&mut mlp, test_data);
+
+    mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
+
+    // Exemple de prédiction d'une image
+    let result = mlp.predict_image("images/CHECK/Banana/banane.jpg", &categories);
+    match result {
+        Ok(category) => println!("Catégorie prédite : {}", category),
+        Err(error) => println!("Erreur : {}", error),
+    }
 }
