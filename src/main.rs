@@ -13,11 +13,11 @@ fn main() {
         }
         "mlp" => {
              println!("Running Multi-Layer Perceptron Algorithm...");
-            mlp_model::main().unwrap();
+            mlp_model::main();
          }
         /*"rbf" => {
             println!("Running Radial Basis Function Network Algorithm...");
-            rbf::run_rbf_algorithm(); // Changez le nom de la fonction en fonction de l'algorithme
+            rbf::run_rbf_algorithm();
         }*/
         _ => {
             println!("Unknown algorithm choice.");
