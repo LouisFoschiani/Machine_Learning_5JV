@@ -4,7 +4,7 @@ mod mlp_model;
 //mod rbf;
 
 fn main() {
-    let algorithm_choice = "mlp_model";
+    let algorithm_choice = "linear_model";
 
     match algorithm_choice {
         "linear_model" => {

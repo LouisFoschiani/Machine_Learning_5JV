@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 #[warn(non_snake_case)]
 
 use image::{self, GenericImageView};
@@ -151,33 +152,76 @@ pub(crate) fn main() -> io::Result<()> {
     let CHECK = true;
 
     let iterations = 150;
-    let weights_file_path = Path::new("model_weights.txt");
+
+    let mut weights_file_path_List: Vec<String> = Vec::new();
+    weights_file_path_List.push("linear_model_weights_0.txt".to_string());
+    weights_file_path_List.push("linear_model_weights_1.txt".to_string());
+    weights_file_path_List.push("linear_model_weights_2.txt".to_string());
 
     let base_training_path = Path::new("images/Training");
     let base_test_path = Path::new("images/Test");
-    let target_category = "Tomato";
-    let non_target_category = "Banana";
+
+    let mut target_List: Vec<String> = Vec::new();
+    target_List.push("Tomato".to_string());
+    target_List.push("Banana".to_string());
+    target_List.push("Avocado".to_string());
+
+    let mut non_target_List: Vec<String> = Vec::new();
+    non_target_List.push("Banana".to_string());
+    non_target_List.push("Avocado".to_string());
+    non_target_List.push("Tomato".to_string());
+
+
 
     if CHECK == true{
 
-        let image_path = Path::new("images\\CHECK\\Banana\\C.png"); // Chemin vers l'image à tester
+        let mut result: Vec<String> = Vec::new();
 
-        let (train_features, _) = load_image_data(base_training_path, target_category, non_target_category)?;
+        for i in 0..weights_file_path_List.len() {
 
-        let (_, colsXLen, rowsWLen) = set_var(&train_features);
-        let (w, _) = load_model_weights(weights_file_path, colsXLen, rowsWLen)?;
+            let image_path = Path::new("images\\CHECK\\Banana\\A.png"); // Chemin vers l'image à tester
 
-        // Traitement de l'image à tester
-        let image_features = process_image(&image_path)?;
+            let (train_features, _) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
 
-        // Faire une prédiction
-        let prediction = predict_linear_model_classification(&w, &image_features);
+            let (_, colsXLen, rowsWLen) = set_var(&train_features);
+            let (w, _) = load_model_weights(Path::new(&weights_file_path_List[i]), colsXLen, rowsWLen)?;
 
-        // Afficher le résultat
-        if prediction == 1 {
-            println!("C'est une TOMATE");
-        } else {
-            println!("C'est une BANANE");
+            // Traitement de l'image à tester
+            let image_features = process_image(&image_path)?;
+
+            // Faire une prédiction
+            let prediction = predict_linear_model_classification(&w, &image_features);
+
+
+            // Afficher le résultat
+            if prediction == 1 {
+                result.push(target_List[i].to_string());
+            } else {
+                result.push(non_target_List[i].to_string());
+            }
+
+        }
+
+
+        let mut resultCount = HashMap::new();
+
+        // Comptage des occurrences de chaque élément
+        for element in &result {
+            *resultCount.entry(element).or_insert(0) += 1;
+        }
+
+        let mut max_element = None;
+        let mut max_count = 0;
+        for (element, count) in resultCount {
+            if count > max_count {
+                max_count = count;
+                max_element = Some(element);
+            }
+        }
+
+        match max_element {
+            Some(element) => println!("'{}'", element),
+            None => println!("La liste est vide."),
         }
 
 
@@ -188,48 +232,52 @@ pub(crate) fn main() -> io::Result<()> {
             println!("\n");
 
             // TRAINING
+            for i in 0..weights_file_path_List.len() {
 
-            let (train_features, train_labels) = load_image_data(base_training_path, target_category, non_target_category)?;
+                let (train_features, train_labels) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
 
-            let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
+                let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
 
-            let (mut w, max_percent) = load_model_weights(weights_file_path, colsXLen, rowsWLen)?;
+                let (mut w, max_percent) = load_model_weights(Path::new(&weights_file_path_List[i]), colsXLen, rowsWLen)?;
 
-            train_linear_model(&train_features, &train_labels, &mut w, rowsXLen, rowsWLen, 1000);
+                train_linear_model(&train_features, &train_labels, &mut w, rowsXLen, rowsWLen, 1000);
 
-            let mut final_result = 0;
+                let mut final_result = 0;
 
-            for i in 0..rowsXLen {
-                let result = predict_linear_model_classification(&w, &train_features[i as usize]);
-                if result == train_labels[i as usize] {
-                    final_result += 1
+                for i in 0..rowsXLen {
+                    let result = predict_linear_model_classification(&w, &train_features[i as usize]);
+                    if result == train_labels[i as usize] {
+                        final_result += 1
+                    }
                 }
-            }
-            println!("Training Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
+                println!("Training Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
 
 
-            // TESTING
-            final_result = 0;
-            let (train_features, train_labels) = load_image_data(base_test_path, target_category, non_target_category)?;
-            let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
+                // TESTING
+                final_result = 0;
+                let (train_features, train_labels) = load_image_data(base_test_path, &target_List[i], &non_target_List[i])?;
+                let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
 
-            let mut final_result = 0;
+                let mut final_result = 0;
 
-            for i in 0..rowsXLen {
-                let result = predict_linear_model_classification(&w, &train_features[i as usize]);
-                if result == train_labels[i as usize] {
-                    final_result += 1
+                for i in 0..rowsXLen {
+                    let result = predict_linear_model_classification(&w, &train_features[i as usize]);
+                    if result == train_labels[i as usize] {
+                        final_result += 1
+                    }
                 }
+
+                println!("Test Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
+                let success = final_result as f32 / train_labels.len() as f32 * 100.0;
+                if success > max_percent{
+                    println!("Update weights : {} > {}", success, max_percent);
+                    save_model_linear(&w, Path::new(&weights_file_path_List[i]), success).expect("TODO: Could not save weights");
+                }
+
+                println!("\n");
+
             }
 
-            println!("Test Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
-            let success = final_result as f32 / train_labels.len() as f32 * 100.0;
-            if success > max_percent{
-                println!("Update weights : {} > {}", success, max_percent);
-                save_model_linear(&w, weights_file_path, success).expect("TODO: Could not save weights");
-            }
-
-            println!("\n");
 
         }
     }
