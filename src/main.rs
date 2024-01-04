@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 mod linear_model;
 mod mlp_model;
+mod scraping;
 //mod rbf;
 
 fn main() {
@@ -15,6 +16,7 @@ fn main() {
              println!("Running Multi-Layer Perceptron Algorithm...");
             mlp_model::main();
          }
+
         /*"rbf" => {
             println!("Running Radial Basis Function Network Algorithm...");
             rbf::run_rbf_algorithm();

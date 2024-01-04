@@ -1,31 +1,28 @@
-// Inclusion des bibliothèques externes pour le traitement d'images et la génération aléatoire
 extern crate image;
 extern crate rand;
 
-// Importation des modules nécessaires
-use image::{DynamicImage, GenericImageView, GrayImage, ImageError};
+use image::{DynamicImage, GenericImageView, ImageError};
 use rand::Rng;
+use std::{fs, iter, path::Path};
+use std::f64::consts::E;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::f64::consts::E;
-use std::{fs, iter};
-use std::path::Path;
-use serde_json; // Pour la sérialisation/désérialisation JSON
+use serde_json;
 
-
-// Structure du Perceptron Multicouches (MLP)
 struct MLP {
-    layers: usize,                      // Nombre de couches
-    neurons_per_layer: Vec<usize>,      // Nombre de neurones par couche
-    weights: Vec<Vec<Vec<f64>>>,        // Poids des connexions
-    outputs: Vec<Vec<f64>>,             // Sorties des neurones
-    deltas: Vec<Vec<f64>>,              // Deltas utilisés pour la rétropropagation
+    layers: usize,
+    neurons_per_layer: Vec<usize>,
+    weights: Vec<Vec<Vec<f64>>>,
+    outputs: Vec<Vec<f64>>,
+    deltas: Vec<Vec<f64>>,
 }
+
 
 // Implémentation des méthodes pour MLP
 impl MLP {
     // Constructeur pour initialiser un MLP
     fn new(neurons_per_layer: Vec<usize>) -> MLP {
+
         let layers = neurons_per_layer.len() - 1;
         let mut rng = rand::thread_rng();
         let mut weights = Vec::new();
@@ -184,6 +181,7 @@ impl MLP {
         Ok(())
     }
 
+
     // Prédiction de l'indice de la catégorie d'une entrée donnée
     fn predict(&mut self, inputs: Vec<f64>) -> usize {
         let outputs = self.forward_propagate(inputs);
@@ -204,12 +202,18 @@ impl MLP {
     // Ouverture et traitement d'une image (conversion en niveaux de gris)
     fn open_and_process_image(img_path: &str) -> Result<DynamicImage, ImageError> {
         let img = image::open(img_path)?;
-        Ok(img.grayscale()) // Ajouter ici d'autres transformations si nécessaire
+        Ok(img) // Convertir en RGB si nécessaire, ou ajouter d'autres traitements ici
     }
 
     // Conversion d'une image en vecteur de pixels normalisés
     fn image_to_pixels(img: &DynamicImage) -> Vec<f64> {
-        img.pixels().map(|(_, _, p)| p[0] as f64 / 255.0).collect()
+        img.pixels().flat_map(|(_, _, p)| {
+            vec![
+                p[0] as f64 / 255.0,
+                p[1] as f64 / 255.0,
+                p[2] as f64 / 255.0
+            ]
+        }).collect()
     }
 }
 
@@ -222,8 +226,9 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
         for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let img_path = entry.path();
-            let img = image::open(img_path).map_err(|e| e.to_string())?.to_luma8();
-            let pixels: Vec<f64> = img.pixels().map(|p| p[0] as f64 / 255.0).collect();
+            let img = MLP::open_and_process_image(img_path.to_str().ok_or("Erreur de chemin d'image")?)
+                .map_err(|e| e.to_string())?;
+            let pixels = MLP::image_to_pixels(&img);
             let mut label_vec = vec![0.0; categories.len()];
             label_vec[label] = 1.0;
             data.push((pixels, label_vec));
@@ -231,7 +236,6 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
     }
     Ok(data)
 }
-
 // Évaluation de la précision du modèle sur les données de test
 fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
     let mut correct_predictions = 0;
@@ -247,21 +251,20 @@ fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
 
 
 // Fonction principale pour exécuter les opérations du MLP
-pub(crate) fn main() {
+
+pub fn main() {
     let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
     let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
-    let categories = ["Banana", "Avocado", "Tomato"];
 
     let taille_image = training_data[0].0.len();
     let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-    mlp.train(training_data, 0.01, 100);
+    mlp.train(training_data, 0.01, 20);
     evaluate_model(&mut mlp, test_data);
 
     mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
 
-    // Exemple de prédiction d'une image
-    let result = mlp.predict_image("images/CHECK/Avocado/avocat.jpg", &categories);
+    let result = mlp.predict_image("images/CHECK/Avocado/avocat.jpg", &["Banana", "Avocado", "Tomato"]);
     match result {
         Ok(category) => println!("Catégorie prédite : {}", category),
         Err(error) => println!("Erreur : {}", error),
