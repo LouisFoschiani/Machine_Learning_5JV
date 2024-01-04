@@ -179,7 +179,7 @@ pub(crate) fn main() -> io::Result<()> {
 
         for i in 0..weights_file_path_List.len() {
 
-            let image_path = Path::new("images\\CHECK\\Orange\\orange2.jpg"); // Chemin vers l'image à tester
+            let image_path = Path::new("images\\CHECK\\Aubergine\\aubergine2.jpeg"); // Chemin vers l'image à tester
 
             let (train_features, _) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
 
