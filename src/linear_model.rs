@@ -163,12 +163,12 @@ pub(crate) fn main() -> io::Result<()> {
 
     let mut target_List: Vec<String> = Vec::new();
     target_List.push("Tomato".to_string());
-    target_List.push("Banana".to_string());
-    target_List.push("Avocado".to_string());
+    target_List.push("Orange".to_string());
+    target_List.push("Aubergine".to_string());
 
     let mut non_target_List: Vec<String> = Vec::new();
-    non_target_List.push("Banana".to_string());
-    non_target_List.push("Avocado".to_string());
+    non_target_List.push("Orange".to_string());
+    non_target_List.push("Aubergine".to_string());
     non_target_List.push("Tomato".to_string());
 
 
@@ -179,7 +179,7 @@ pub(crate) fn main() -> io::Result<()> {
 
         for i in 0..weights_file_path_List.len() {
 
-            let image_path = Path::new("images\\CHECK\\Banana\\A.png"); // Chemin vers l'image à tester
+            let image_path = Path::new("images\\CHECK\\Orange\\orange2.jpg"); // Chemin vers l'image à tester
 
             let (train_features, _) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
 

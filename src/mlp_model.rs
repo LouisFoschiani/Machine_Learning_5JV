@@ -8,7 +8,6 @@ use std::f64::consts::E;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use serde_json;
-
 struct MLP {
     layers: usize,
     neurons_per_layer: Vec<usize>,
@@ -71,7 +70,7 @@ impl MLP {
     }
 
     // Calcul de l'erreur d'entropie croisée
-    fn cross_entropy_error(output: &[f64], expected: &[f64]) -> f64 {
+    fn cross_entropy_error(output: &Vec<f64>, expected: &[f64]) -> f64 {
         expected.iter().zip(output.iter()).map(|(&e, &o)| {
             if e == 1.0 { -o.ln() } else { -(1.0 - o).ln() }
         }).sum()
@@ -220,7 +219,7 @@ impl MLP {
 // Chargement des images d'entraînement et de test en vecteurs normalisés
 fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
     let mut data = Vec::new();
-    let categories = ["Banana", "Avocado", "Tomato"];
+    let categories = ["aubergine", "orange", "tomato"];
     for (label, category) in categories.iter().enumerate() {
         let category_path = Path::new(folder_path).join(category);
         for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
@@ -259,12 +258,12 @@ pub fn main() {
     let taille_image = training_data[0].0.len();
     let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-    mlp.train(training_data, 0.01, 20);
+    mlp.train(training_data, 0.01, 50);
     evaluate_model(&mut mlp, test_data);
 
     mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
 
-    let result = mlp.predict_image("images/CHECK/Avocado/avocat.jpg", &["Banana", "Avocado", "Tomato"]);
+    let result = mlp.predict_image("images/CHECK/Avocado/avocat.jpg", &["aubergine", "orange", "tomato"]);
     match result {
         Ok(category) => println!("Catégorie prédite : {}", category),
         Err(error) => println!("Erreur : {}", error),
