@@ -7,6 +7,40 @@ use rand::Rng;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path};
+use plotters::prelude::*;
+
+
+fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
+
+    let name = format!("index-{}.png", index);
+    let title = format!("Training and Test Errors Over Iteration: {}/{}", target, nonTarget);
+    let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
+    root.fill(&WHITE)?;
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, ("sans-serif", 20).into_font())
+        .margin(5)
+        .x_label_area_size(30)
+        .y_label_area_size(30)
+        .build_cartesian_2d(0..train_errors.len(), 0f32..1f32)?;
+
+    chart.configure_mesh().draw()?;
+
+    chart.draw_series(LineSeries::new(
+        train_errors.iter().enumerate().map(|(i, &err)| (i, err)),
+        &RED,
+    ))?.label("Training Error")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+
+    chart.draw_series(LineSeries::new(
+        test_errors.iter().enumerate().map(|(i, &err)| (i, err)),
+        &BLUE,
+    ))?.label("Test Error")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+
+    chart.configure_series_labels().border_style(&BLACK).draw()?;
+    Ok(())
+}
+
 
 fn load_image_data(base_path: &Path, target_category: &str, non_target_category: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
     let mut features = Vec::new();
@@ -146,10 +180,9 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
     (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
 }
 
-
 pub(crate) fn main() -> io::Result<()> {
 
-    let CHECK = true;
+    let CHECK = false;
 
     let iterations = 150;
 
@@ -226,7 +259,19 @@ pub(crate) fn main() -> io::Result<()> {
 
 
     }else{
+
+        let mut train_errors: Vec<Vec<f32>> = Vec::new();
+        let mut test_errors: Vec<Vec<f32>> = Vec::new();
+
+        for i in 0..weights_file_path_List.len() {
+            train_errors.push(Vec::new());
+            test_errors.push(Vec::new());
+        }
+
+
+
         for iter in 0..iterations {
+
 
             println!("------- ITERATION {} -------", iter);
             println!("\n");
@@ -269,6 +314,8 @@ pub(crate) fn main() -> io::Result<()> {
 
                 println!("Test Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
                 let success = final_result as f32 / train_labels.len() as f32 * 100.0;
+                test_errors[i].push(1.0 - success/100.0);
+
                 if success > max_percent{
                     println!("Update weights : {} > {}", success, max_percent);
                     save_model_linear(&w, Path::new(&weights_file_path_List[i]), success).expect("TODO: Could not save weights");
@@ -276,10 +323,33 @@ pub(crate) fn main() -> io::Result<()> {
 
                 println!("\n");
 
+
+
+                final_result = 0;
+                let (train_features, train_labels) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
+                let (rowsXLen, colsXLen, rowsWLen) = set_var(&train_features);
+
+                let mut final_result = 0;
+
+                for i in 0..rowsXLen {
+                    let result = predict_linear_model_classification(&w, &train_features[i as usize]);
+                    if result == train_labels[i as usize] {
+                        final_result += 1
+                    }
+                }
+                let success = final_result as f32 / train_labels.len() as f32 * 100.0;
+                train_errors[i].push(1.0 - success/100.0);
+
+
             }
 
-
         }
+
+        for i in 0..weights_file_path_List.len() {
+            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), non_target_List[i].to_string()).expect("Erreur lors de la création du graphique");
+        }
+
+
     }
 
 
