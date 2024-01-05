@@ -5,7 +5,7 @@ mod scraping;
 //mod rbf;
 
 fn main() {
-    let algorithm_choice = "linear_model";
+    let algorithm_choice = "mlp_model";
 
     match algorithm_choice {
         "linear_model" => {
