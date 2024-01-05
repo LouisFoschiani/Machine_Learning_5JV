@@ -252,18 +252,29 @@ fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
 // Fonction principale pour exécuter les opérations du MLP
 
 pub fn main() {
+    let should_train = false; // Mettez à true pour entraîner, false pour charger les poids et prédire
+
     let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
     let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
-
     let taille_image = training_data[0].0.len();
+
     let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-    mlp.train(training_data, 0.01, 50);
-    evaluate_model(&mut mlp, test_data);
+    if should_train {
+        mlp.train(training_data, 0.01, 50);
+        evaluate_model(&mut mlp, test_data);
+        mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
+    } else {
 
-    mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
+        mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
+        evaluate_model(&mut mlp, test_data);
+    }
 
-    let result = mlp.predict_image("images/CHECK/Avocado/avocat.jpg", &["aubergine", "orange", "tomato"]);
+    // Testez avec un chemin d'image valide
+
+    let categories = ["orange", "aubergine", "tomato"];
+    let img_path = "images/CHECK/Tomato/tomate.jpg"; // Mettez ici le chemin de votre image de test
+    let result = mlp.predict_image(img_path, &categories);
     match result {
         Ok(category) => println!("Catégorie prédite : {}", category),
         Err(error) => println!("Erreur : {}", error),
