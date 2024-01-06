@@ -318,7 +318,7 @@ pub(crate) fn main() -> io::Result<()> {
 
                 if success > max_percent{
                     println!("Update weights : {} > {}", success, max_percent);
-                    save_model_linear(&w, Path::new(&weights_file_path_List[i]), success).expect("TODO: Could not save weights");
+                    save_model_linear(&w, Path::new(&weights_file_path_List[i]), success).expect("Erreur lors de l'enregistrement des poids");
                 }
 
                 println!("\n");
