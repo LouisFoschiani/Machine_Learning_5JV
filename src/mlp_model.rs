@@ -157,10 +157,10 @@ impl MLP {
             let mut total_error = 0.0;
 
             // Propagation et rétropropagation pour chaque exemple d'entraînement
-            for (inputs, expected) in &training_data {
+            for (inputs, expected) in training_data {
                 let outputs = self.forward_propagate(inputs.clone());
                 total_error += MLP::cross_entropy_error(&outputs, expected);
-                self.backward_propagate_error(expected.clone());
+                self.backward_propagate_error(&expected.clone());
                 self.update_weights(inputs.clone(), learning_rate);
             }
 
@@ -244,7 +244,7 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
 // Évaluation de la précision du modèle sur les données de test
 fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>) -> f32 {
     let mut correct_predictions = 0;
-    for (pixels, expected) in &test_data { // Utiliser une référence ici
+    for (pixels, expected) in test_data { // Utiliser une référence ici
         let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
         if predicted == expected.iter().position(|&r| r == 1.0).unwrap() {
             correct_predictions += 1;
