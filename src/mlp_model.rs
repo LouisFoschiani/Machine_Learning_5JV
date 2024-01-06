@@ -4,7 +4,7 @@ extern crate rand;
 use image::{DynamicImage, GenericImageView, ImageError};
 use rand::Rng;
 use std::{fs, iter, path::Path};
-use std::f64::consts::E;
+use std::f32::consts::E;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use plotters::backend::BitMapBackend;
@@ -17,9 +17,9 @@ use plotters::prelude::*;
 struct MLP {
     layers: usize,
     neurons_per_layer: Vec<usize>,
-    weights: Vec<Vec<Vec<f64>>>,
-    outputs: Vec<Vec<f64>>,
-    deltas: Vec<Vec<f64>>,
+    weights: Vec<Vec<Vec<f32>>>,
+    outputs: Vec<Vec<f32>>,
+    deltas: Vec<Vec<f32>>,
 }
 
 
@@ -42,7 +42,7 @@ impl MLP {
 
             // Initialisation des poids aléatoires pour chaque connexion
             for _ in 0..num_inputs {
-                let neuron_weights: Vec<f64> = (0..num_neurons).map(|_| rng.gen_range(-1.0..1.0)).collect();
+                let neuron_weights: Vec<f32> = (0..num_neurons).map(|_| rng.gen_range(-1.0..1.0)).collect();
                 layer_weights.push(neuron_weights);
             }
 
@@ -60,30 +60,30 @@ impl MLP {
         }
     }
     // Fonction d'activation sigmoidale
-    fn sigmoid(x: f64) -> f64 {
+    fn sigmoid(x: f32) -> f32 {
         1.0 / (1.0 + E.powf(-x))
     }
 
     // Dérivée de la fonction sigmoidale
-    fn sigmoid_derivative(x: f64) -> f64 {
+    fn sigmoid_derivative(x: f32) -> f32 {
         x * (1.0 - x)
     }
 
     // Fonction softmax pour la couche de sortie
-    fn softmax(layer_outputs: &[f64]) -> Vec<f64> {
-        let exp_sum: f64 = layer_outputs.iter().map(|&x| E.powf(x)).sum();
+    fn softmax(layer_outputs: &[f32]) -> Vec<f32> {
+        let exp_sum: f32 = layer_outputs.iter().map(|&x| E.powf(x)).sum();
         layer_outputs.iter().map(|&x| E.powf(x) / exp_sum).collect()
     }
 
     // Calcul de l'erreur d'entropie croisée
-    fn cross_entropy_error(output: &Vec<f64>, expected: &[f64]) -> f64 {
+    fn cross_entropy_error(output: &Vec<f32>, expected: &[f32]) -> f32 {
         expected.iter().zip(output.iter()).map(|(&e, &o)| {
             if e == 1.0 { -o.ln() } else { -(1.0 - o).ln() }
         }).sum()
     }
 
     // Propagation avant pour calculer les sorties du réseau
-    fn forward_propagate(&mut self, inputs: Vec<f64>) -> Vec<f64> {
+    fn forward_propagate(&mut self, inputs: Vec<f32>) -> Vec<f32> {
         let mut activations = inputs;
 
         // Calcul des activations pour chaque couche
@@ -94,8 +94,8 @@ impl MLP {
             // Utilisation de softmax pour la dernière couche, sinon sigmoid
             if l == self.layers - 1 {
                 activations = MLP::softmax(&layer_inputs.iter().zip(&self.weights[l]).map(|(i, weights)| {
-                    weights.iter().map(|&w| i * w).sum::<f64>()
-                }).collect::<Vec<f64>>());
+                    weights.iter().map(|&w| i * w).sum::<f32>()
+                }).collect::<Vec<f32>>());
             } else {
                 activations = self.weights[l].iter().map(|weights| {
                     MLP::sigmoid(layer_inputs.iter().zip(weights.iter()).map(|(i, w)| i * w).sum())
@@ -109,9 +109,9 @@ impl MLP {
     }
 
     // Rétropropagation pour calculer les deltas
-    fn backward_propagate_error(&mut self, expected: Vec<f64>) {
+    fn backward_propagate_error(&mut self, expected: &[f32]) {
         for l in (0..self.layers).rev() {
-            let errors: Vec<f64>;
+            let errors: Vec<f32>;
 
             // Calcul des erreurs pour chaque couche
             if l == self.layers - 1 {
@@ -132,11 +132,11 @@ impl MLP {
     }
 
     // Mise à jour des poids en utilisant les deltas et le taux d'apprentissage
-    fn update_weights(&mut self, inputs: Vec<f64>, learning_rate: f64) {
+    fn update_weights(&mut self, inputs: Vec<f32>, learning_rate: f32) {
         let mut inputs = inputs;
 
         for (l, (layer_weights, layer_deltas)) in self.weights.iter_mut().zip(self.deltas.iter()).enumerate() {
-            let inputs_bias = iter::once(&1.0).chain(inputs.iter()).copied().collect::<Vec<f64>>();
+            let inputs_bias = iter::once(&1.0).chain(inputs.iter()).copied().collect::<Vec<f32>>();
 
             for (neuron_weights, delta) in layer_weights.iter_mut().zip(layer_deltas.iter()) {
                 for (weight, input) in neuron_weights.iter_mut().zip(inputs_bias.iter()) {
@@ -152,7 +152,7 @@ impl MLP {
     }
 
     // Entraînement du réseau avec un ensemble de données, un taux d'apprentissage et un nombre d'itérations
-    fn train(&mut self, training_data: Vec<(Vec<f64>, Vec<f64>)>, learning_rate: f64, n_iterations: usize) {
+    fn train(&mut self, training_data: &Vec<(Vec<f32>, Vec<f32>)>, learning_rate: f32, n_iterations: usize) {
         for epoch in 0..n_iterations {
             let mut total_error = 0.0;
 
@@ -165,7 +165,7 @@ impl MLP {
             }
 
             // Affichage de l'erreur moyenne après chaque époque
-            println!("Époque {}: Erreur moyenne = {}", epoch + 1, total_error / training_data.len() as f64);
+            println!("Époque {}: Erreur moyenne = {}", epoch + 1, total_error / training_data.len() as f32);
         }
     }
 
@@ -188,7 +188,7 @@ impl MLP {
 
 
     // Prédiction de l'indice de la catégorie d'une entrée donnée
-    fn predict(&mut self, inputs: Vec<f64>) -> usize {
+    fn predict(&mut self, inputs: Vec<f32>) -> usize {
         let outputs = self.forward_propagate(inputs);
         outputs.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(index, _)| index).unwrap()
     }
@@ -197,7 +197,7 @@ impl MLP {
     pub fn predict_image(&mut self, img_path: &str, categories: &[&str]) -> Result<String, String> {
         let img = Self::open_and_process_image(img_path)
             .map_err(|e| e.to_string())?;
-        let pixels: Vec<f64> = Self::image_to_pixels(&img);
+        let pixels: Vec<f32> = Self::image_to_pixels(&img);
         let predicted_index = self.predict(pixels);
         categories.get(predicted_index)
             .map(|&category| category.to_string())
@@ -211,19 +211,19 @@ impl MLP {
     }
 
     // Conversion d'une image en vecteur de pixels normalisés
-    fn image_to_pixels(img: &DynamicImage) -> Vec<f64> {
+    fn image_to_pixels(img: &DynamicImage) -> Vec<f32> {
         img.pixels().flat_map(|(_, _, p)| {
             vec![
-                p[0] as f64 / 255.0,
-                p[1] as f64 / 255.0,
-                p[2] as f64 / 255.0
+                p[0] as f32 / 255.0,
+                p[1] as f32 / 255.0,
+                p[2] as f32 / 255.0
             ]
         }).collect()
     }
 }
 
 // Chargement des images d'entraînement et de test en vecteurs normalisés
-fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
+fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
     let mut data = Vec::new();
     let categories = ["aubergine", "orange", "tomato"];
     for (label, category) in categories.iter().enumerate() {
@@ -242,7 +242,7 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
     Ok(data)
 }
 // Évaluation de la précision du modèle sur les données de test
-fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
+fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>) -> f32 {
     let mut correct_predictions = 0;
     for (pixels, expected) in &test_data { // Utiliser une référence ici
         let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
@@ -250,14 +250,16 @@ fn evaluate_model(mlp: &mut MLP, test_data: Vec<(Vec<f64>, Vec<f64>)>) {
             correct_predictions += 1;
         }
     }
-    let accuracy = correct_predictions as f64 / test_data.len() as f64;
+    let accuracy = correct_predictions as f32 / test_data.len() as f32;
     println!("Précision : {}", accuracy);
+
+    return 1.0-accuracy;
 }
 
-fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, cat1: String, cat2: String, cat3: String) -> Result<(), Box<dyn std::error::Error>> {
 
-    let name = format!("index-{}.png", index);
-    let title = format!("Training and Test Errors Over Iteration: {}/{}", target, nonTarget);
+    let name = format!("Stats MLP.png");
+    let title = format!("Training and Test Errors Over Iteration: {}/{}/{}", cat1, cat2, cat3);
     let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
@@ -293,32 +295,41 @@ pub fn main() {
 
     let mut train_errors: Vec<f32> = Vec::new();
     let mut test_errors: Vec<f32> = Vec::new();
+    let categories = ["Aubergine", "Orange", "Tomato"];
 
-    let should_train = false; // Mettez à true pour entraîner, false pour charger les poids et prédire
+    let should_train = true; // Mettez à true pour entraîner, false pour charger les poids et prédire
 
     let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
     let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
     let taille_image = training_data[0].0.len();
 
-    let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
+    for iter in 0..150 {
 
-    if should_train {
-        mlp.train(training_data, 0.01, 150);
-        evaluate_model(&mut mlp, test_data);
-        mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
-    } else {
+        let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-        mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
-        evaluate_model(&mut mlp, test_data);
+        if should_train {
+            mlp.train(&training_data, 0.01, iter + 1);
+            train_errors.push(evaluate_model(&mut mlp, &training_data));
+            test_errors.push(evaluate_model(&mut mlp, &test_data));
+            mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
+        } else {
+
+            mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
+            evaluate_model(&mut mlp, &test_data);
+        }
+
+        // Testez avec un chemin d'image valide
+        
+        let img_path = "images/CHECK/Tomato/tomate.jpg"; // Mettez ici le chemin de votre image de test
+        let result = mlp.predict_image(img_path, &categories);
+        match result {
+            Ok(category) => println!("Catégorie prédite : {}", category),
+            Err(error) => println!("Erreur : {}", error),
+        }
+        
     }
 
-    // Testez avec un chemin d'image valide
-
-    let categories = ["orange", "aubergine", "tomato"];
-    let img_path = "images/CHECK/Tomato/tomate.jpg"; // Mettez ici le chemin de votre image de test
-    let result = mlp.predict_image(img_path, &categories);
-    match result {
-        Ok(category) => println!("Catégorie prédite : {}", category),
-        Err(error) => println!("Erreur : {}", error),
-    }
+    plot_errors(&train_errors, &test_errors, categories[0].to_string(), categories[1].to_string(), categories[2].to_string()).expect("Erreur lors de la création du graphique");
+    
+    
 }
