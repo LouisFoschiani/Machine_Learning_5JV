@@ -216,10 +216,11 @@ impl MLP {
     }
 }
 
+
 // Chargement des images d'entraînement et de test en vecteurs normalisés
 fn load_images(folder_path: &str) -> Result<Vec<(Vec<f64>, Vec<f64>)>, String> {
     let mut data = Vec::new();
-    let categories = ["aubergine", "orange", "tomato"];
+    let categories = ["Aubergine", "Orange", "Tomato"];
     for (label, category) in categories.iter().enumerate() {
         let category_path = Path::new(folder_path).join(category);
         for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
@@ -272,8 +273,8 @@ pub fn main() {
 
     // Testez avec un chemin d'image valide
 
-    let categories = ["orange", "aubergine", "tomato"];
-    let img_path = "images/CHECK/Tomato/tomate.jpg"; // Mettez ici le chemin de votre image de test
+    let categories = ["Aubergine", "Orange", "Tomato"];
+    let img_path = "images/CHECK/orange/orange2.jpg"; // Mettez ici le chemin de votre image de test
     let result = mlp.predict_image(img_path, &categories);
     match result {
         Ok(category) => println!("Catégorie prédite : {}", category),
