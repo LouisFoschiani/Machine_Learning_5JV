@@ -12,7 +12,7 @@ fn main() {
             println!("Running Linear Model Algorithm...");
             linear_model::main().unwrap();
         }
-        "mlp_model" => unsafe {
+        "mlp_model" => {
              println!("Running Multi-Layer Perceptron Algorithm...");
             mlp_model::main();
          }
