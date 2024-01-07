@@ -1,3 +1,5 @@
+#[warn(dead_code)]
+
 extern crate image;
 extern crate rand;
 
@@ -59,7 +61,17 @@ impl MLP {
             deltas,
         }
     }
-    // Fonction d'activation sigmoidale
+    fn augment_image(image: DynamicImage) -> DynamicImage {
+        let mut rng = rand::thread_rng();
+        if rng.gen_bool(0.5) {
+            image.fliph()
+        } else {
+            image
+        }
+    }
+
+
+        // Fonction d'activation sigmoidale
     fn sigmoid(x: f32) -> f32 {
         1.0 / (1.0 + E.powf(-x))
     }
@@ -223,9 +235,9 @@ impl MLP {
 }
 
 // Chargement des images d'entraînement et de test en vecteurs normalisés
-fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
+fn load_images(folder_path: &str, augment: bool) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
     let mut data = Vec::new();
-    let categories = ["aubergine", "orange", "tomato"];
+    let categories = ["Aubergine", "Orange", "Tomato"];
     for (label, category) in categories.iter().enumerate() {
         let category_path = Path::new(folder_path).join(category);
         for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
@@ -233,6 +245,10 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
             let img_path = entry.path();
             let img = MLP::open_and_process_image(img_path.to_str().ok_or("Erreur de chemin d'image")?)
                 .map_err(|e| e.to_string())?;
+
+            // Appliquer l'augmentation de données si nécessaire
+            let img = if augment { MLP::augment_image(img) } else { img };
+
             let pixels = MLP::image_to_pixels(&img);
             let mut label_vec = vec![0.0; categories.len()];
             label_vec[label] = 1.0;
@@ -287,6 +303,11 @@ fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, cat1: String, ca
     Ok(())
 }
 
+fn split_data(data: Vec<(Vec<f32>, Vec<f32>)>, train_ratio: f32) -> (Vec<(Vec<f32>, Vec<f32>)>, Vec<(Vec<f32>, Vec<f32>)>) {
+    let train_size = (data.len() as f32 * train_ratio) as usize;
+    let (train_data, validation_data) = data.split_at(train_size);
+    (train_data.to_vec(), validation_data.to_vec())
+}
 
 
 // Fonction principale pour exécuter les opérations du MLP
@@ -297,39 +318,44 @@ pub fn main() {
     let mut test_errors: Vec<f32> = Vec::new();
     let categories = ["Aubergine", "Orange", "Tomato"];
 
-    let should_train = true; // Mettez à true pour entraîner, false pour charger les poids et prédire
+    let should_train = false; // Mettez à true pour entraîner, false pour charger les poids et prédire
+        // ... (Initialisation, chargement des données, etc.)
 
-    let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
-    let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
-    let taille_image = training_data[0].0.len();
+        let training_data_all = load_images("images/Training", true).expect("Erreur lors du chargement des images d'entraînement");
+        let (training_data, validation_data) = split_data(training_data_all, 0.8);
+        let test_data = load_images("images/Test", false).expect("Erreur lors du chargement des images de test");
+        let taille_image = training_data[0].0.len();
 
-    for iter in 0..150 {
+        let mut best_accuracy = 0.0;
+        let weights_file_path = "model_weights_mlp.json";
 
-        let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
+        for iter in 0..20 {
+            let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
 
-        if should_train {
-            mlp.train(&training_data, 0.01, iter + 1);
-            train_errors.push(evaluate_model(&mut mlp, &training_data));
-            test_errors.push(evaluate_model(&mut mlp, &test_data));
-            mlp.save_weights("model_weights_mlp.json").expect("Erreur lors de l'enregistrement des poids");
-        } else {
+            if should_train {
+                mlp.train(&training_data, 0.01, iter + 1);
 
-            mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
-            evaluate_model(&mut mlp, &test_data);
+                let validation_accuracy = evaluate_model(&mut mlp, &validation_data);
+                println!("Validation Accuracy: {}", validation_accuracy);
+
+                // Enregistrer les poids si la précision de validation est meilleure
+                if validation_accuracy > best_accuracy {
+                    best_accuracy = validation_accuracy;
+                    mlp.save_weights(weights_file_path).expect("Erreur lors de l'enregistrement des poids");
+                }
+
+                train_errors.push(evaluate_model(&mut mlp, &training_data));
+                test_errors.push(evaluate_model(&mut mlp, &test_data));
+            } else {
+                mlp.load_weights(weights_file_path).expect("Erreur lors du chargement des poids");
+                let img_path = "images/check/Aubergine/aubergine1.jpg"; // Remplacez par le chemin d'accès réel
+                let predicted_category = mlp.predict_image(img_path, &categories);
+                match predicted_category {
+                    Ok(category) => println!("Catégorie prédite : {}", category),
+                    Err(error) => println!("Erreur lors de la prédiction : {}", error)
+                }
+                evaluate_model(&mut mlp, &test_data);
+            }
         }
-
-        // Testez avec un chemin d'image valide
-        
-        let img_path = "images/CHECK/Tomato/tomate.jpg"; // Mettez ici le chemin de votre image de test
-        let result = mlp.predict_image(img_path, &categories);
-        match result {
-            Ok(category) => println!("Catégorie prédite : {}", category),
-            Err(error) => println!("Erreur : {}", error),
-        }
-        
-    }
-
     plot_errors(&train_errors, &test_errors, categories[0].to_string(), categories[1].to_string(), categories[2].to_string()).expect("Erreur lors de la création du graphique");
-    
-    
 }
