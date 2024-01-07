@@ -6,7 +6,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Charger la DLL
-ma_lib = ctypes.CDLL('C:\Users\Louis\Documents\GitHub\machine_Learning_5JV\dll_folder\target\debug\dll_folder.dll')
+ma_lib = ctypes.CDLL('C:\\Users\\Louis\\Documents\\GitHub\\machine_Learning_5JV\\dll_folder\\target\\debug\\dll_folder.dll')
 
 @app.route('/calculer', methods=['GET'])
 def calculer():
