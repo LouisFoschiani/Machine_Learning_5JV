@@ -281,7 +281,7 @@ fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
     Ok(data)
 }
 // Évaluation de la précision du modèle sur les données de test
-fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest : bool) {
+fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest : bool)-> f32 {
     let mut correct_predictions = 0;
     for (pixels, expected) in test_data { // Utiliser une référence ici
         let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
@@ -296,40 +296,50 @@ fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest :
         mlp.train_errors.push(1.0-accuracy);
     }
     println!("Précision : {}", accuracy);
+
+    return accuracy;
 }
 
 
 // Fonction principale pour exécuter les opérations du MLP
 pub fn main() {
-    let should_train = true; // Mettez à true pour entraîner, false pour charger les poids et prédire
+    let should_train = false; // Mettez à true pour entraîner, false pour charger les poids et prédire
 
-    let training_data = load_images("images/Training").expect("Erreur lors du chargement des images d'entraînement");
-    let test_data = load_images("images/Test").expect("Erreur lors du chargement des images de test");
+    let training_data = load_images("images_16/Training").expect("Erreur lors du chargement des images d'entraînement");
+    let test_data = load_images("images_16/Test").expect("Erreur lors du chargement des images de test");
     let taille_image = training_data[0].0.len();
 
-    let mut mlp = MLP::new(vec![taille_image, 300, 150, 3]);
+    let mut mlp = MLP::new(vec![taille_image, 75, 15, 3]);
 
-    for iter in 0..150{
-        if should_train {
+    let mut lastPerf = 0.0;
+
+    if should_train {
+        for iter in 0..250{
+
             mlp.train(&training_data, 0.001, iter);
-            evaluate_model(&mut mlp, &test_data, true);
+            let result = evaluate_model(&mut mlp, &test_data, true);
+            if(result > lastPerf){
+                lastPerf = result;
+                mlp.save_weights("model_weights_mlp.json").expect("Cannot save weights");
+            }
             evaluate_model(&mut mlp, &training_data, false);
-        } else {
-            mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
-            evaluate_model(&mut mlp, &test_data, true);
+
+            if should_train {
+
+            }
+        }
+    }else {
+        mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
+        let categories = ["Aubergine", "Orange", "Tomato"];
+        let img_path = "images_16/CHECK/Orange/orange3.jpg"; // Mettez ici le chemin de votre image de test
+        let result = mlp.predict_image(img_path, &categories);
+        match result {
+            Ok(category) => println!("Catégorie prédite : {}", category),
+            Err(error) => println!("Erreur : {}", error),
         }
     }
 
     plot_errors(&mlp.train_errors, &mlp.test_errors).expect("Error generating image");
 
 
-    // Testez avec un chemin d'image valide
-
-    // let categories = ["Aubergine", "Orange", "Tomato"];
-    // let img_path = "images/CHECK/orange/orange2.jpg"; // Mettez ici le chemin de votre image de test
-    // let result = mlp.predict_image(img_path, &categories);
-    // match result {
-    //     Ok(category) => println!("Catégorie prédite : {}", category),
-    //     Err(error) => println!("Erreur : {}", error),
-    // }
 }
