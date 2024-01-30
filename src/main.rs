@@ -2,10 +2,10 @@
 mod linear_model;
 mod mlp_model;
 mod scraping;
-//mod rbf;
+mod rbf_model;
 
 fn main() {
-    let algorithm_choice = "mlp_model";
+    let algorithm_choice = "rbf_model";
 
     match algorithm_choice {
         "linear_model" => {
@@ -16,11 +16,10 @@ fn main() {
              println!("Running Multi-Layer Perceptron Algorithm...");
             mlp_model::main();
          }
-
-        /*"rbf" => {
+        "rbf_model" => {
             println!("Running Radial Basis Function Network Algorithm...");
-            rbf::run_rbf_algorithm();
-        }*/
+            rbf_model::main().unwrap();
+        }
         _ => {
             println!("Unknown algorithm choice.");
         }
