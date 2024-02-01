@@ -7,78 +7,59 @@ use rand::distributions::{Distribution, Uniform};
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use plotters::prelude::*;
 
-const IMAGE_SIZE: usize = 16 * 16; // Taille d'image ajustée
-fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
-
-    let name = format!("index-{}.png", index);
-    let title = format!("Training and Test Errors Over Iteration: {}/{}", target, nonTarget);
-    let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
-    root.fill(&WHITE)?;
-    let mut chart = ChartBuilder::on(&root)
-        .caption(title, ("sans-serif", 20).into_font())
-        .margin(5)
-        .x_label_area_size(30)
-        .y_label_area_size(30)
-        .build_cartesian_2d(0..train_errors.len(), 0f32..1f32)?;
-
-    chart.configure_mesh().draw()?;
-
-    chart.draw_series(LineSeries::new(
-        train_errors.iter().enumerate().map(|(i, &err)| (i, err)),
-        &RED,
-    ))?.label("Training Error")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
-
-    chart.draw_series(LineSeries::new(
-        test_errors.iter().enumerate().map(|(i, &err)| (i, err)),
-        &BLUE,
-    ))?.label("Test Error")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
-
-    chart.configure_series_labels().border_style(&BLACK).draw()?;
-    Ok(())
-}
-
+const IMAGE_SIZE: usize = 16 * 16;
 
 struct RBFN {
     centers: Vec<Vec<f32>>,
     weights: Vec<f32>,
     beta: f32,
 }
-impl RBFN {
-    fn new(num_centers: usize, input_dimension: usize, beta: f32) -> Self {
-        let mut rng = rand::thread_rng();
-        let between = Uniform::from(0.0..1.0);
-        let centers = (0..num_centers).map(|_| (0..input_dimension).map(|_| between.sample(&mut rng)).collect()).collect();
 
-        let weights = vec![0.0; num_centers + 1]; // +1 for bias
+impl RBFN {
+    fn new(num_centers: usize, input_dimension: usize) -> Self {
+        let mut rng = thread_rng();
+        let centers: Vec<Vec<f32>> = vec![vec![0.0; input_dimension]; num_centers];
+        let weights: Vec<f32> = vec![0.0; num_centers + 1]; // +1 for bias
+        let beta = 1.0 / input_dimension as f32; // Un exemple simple pour initialiser beta
 
         RBFN { centers, weights, beta }
     }
+    fn copy_weights_from(&mut self, source_weights: &[f32]) {
+        self.weights.copy_from_slice(source_weights);
+    }
+
+    fn copy_weights_from_rbfn(&mut self, source_rbfn: &RBFN) {
+        self.weights.copy_from_slice(&source_rbfn.weights);
+    }
+
+
 
     fn train(&mut self, x: &[Vec<f32>], y: &[i32], epochs: usize, learning_rate: f32) {
         let mut rng = thread_rng();
-        for _ in 0..epochs {
-            x.iter().zip(y.iter()).for_each(|(input, &label)| {
+
+        // Initialisation des centres à des échantillons aléatoires
+        let mut sample_indices: Vec<usize> = (0..x.len()).collect();
+        sample_indices.shuffle(&mut rng);
+        for i in 0..self.centers.len() {
+            self.centers[i] = x[sample_indices[i]].clone();
+        }
+
+        for epoch in 0..epochs {
+            for (input, &label) in x.iter().zip(y.iter()) {
                 let output = self.predict(input);
                 let error = label as f32 - output;
-                self.weights[0] += learning_rate * error; // Update bias weight
 
+                // Mise à jour du poids de biais
+                self.weights[0] += learning_rate * error;
+
+                // Mise à jour des poids des RBF
                 for i in 0..self.centers.len() {
                     let rbf_output = self.radial_basis_function(input, &self.centers[i]);
-                    self.weights[i + 1] += learning_rate * error * rbf_output; // Update RBF weights
+                    self.weights[i + 1] += learning_rate * error * rbf_output;
                 }
-            });
-
-            self.centers.iter_mut().for_each(|center| {
-                let random_input = x.choose(&mut rng).expect("Non-empty input list");
-                for (c, &input) in center.iter_mut().zip(random_input.iter()) {
-                    *c += learning_rate * (input - *c); // Update center towards a random input sample
-                }
-            });
+            }
         }
     }
-
     fn predict(&self, input: &[f32]) -> f32 {
         let mut output = self.weights[0]; // Start with bias
         for (i, center) in self.centers.iter().enumerate() {
@@ -94,32 +75,76 @@ impl RBFN {
     }
 
 
-
-    fn load_image_data(&self, base_path: &Path, target_category: &str, non_target_category: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
+    fn load_image_data(
+        &self,
+        base_path: &Path,
+        target_category: &str,
+        non_target_category: &Vec<&str>,
+    ) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
         let mut features = Vec::new();
         let mut labels = Vec::new();
 
         // Load target category images
         let target_path = base_path.join(target_category);
-        for entry in fs::read_dir(target_path)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                let image_features = RBFN::process_image(&path)?;
-                features.push(image_features);
-                labels.push(1);
+        match fs::read_dir(&target_path) {
+            Ok(entries) => {
+                for entry in entries {
+                    let entry = match entry {
+                        Ok(e) => e,
+                        Err(e) => {
+                            continue;
+                        }
+                    };
+                    let path = entry.path();
+                    if path.is_file() {
+                        match RBFN::process_image(&path) {
+                            Ok(image_features) => {
+                                features.push(image_features);
+                                labels.push(1);
+                            }
+                            Err(_) => {
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(e);
             }
         }
 
         // Load non-target category images
-        let non_target_path = base_path.join(non_target_category);
-        for entry in fs::read_dir(non_target_path)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                let image_features = RBFN::process_image(&path)?;
-                features.push(image_features);
-                labels.push(-1);
+        for category in non_target_category.iter() {
+            let non_target_path = base_path.join(category);
+            match fs::read_dir(&non_target_path) {
+                Ok(entries) => {
+                    for entry in entries {
+                        let entry = match entry {
+                            Ok(e) => e,
+                            Err(e) => {
+                                eprintln!("Erreur lors de la lecture d'une entrée dans le répertoire non cible : {}", e);
+                                continue;
+                            }
+                        };
+                        let path = entry.path();
+                        if path.is_file() {
+                            match RBFN::process_image(&path) {
+                                Ok(image_features) => {
+                                    features.push(image_features);
+                                    labels.push(-1);
+                                }
+                                Err(e) => {
+                                    eprintln!("Erreur lors du traitement de l'image : {:?}, erreur : {}", path, e);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Erreur lors de la lecture du répertoire non cible : {}", e);
+                    return Err(e);
+                }
             }
         }
 
@@ -128,17 +153,16 @@ impl RBFN {
 
     fn process_image(path: &Path) -> io::Result<Vec<f32>> {
         let img = image::open(path).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        // Assurez-vous que l'image est redimensionnée à 16x16 si ce n'est pas déjà le cas.
         let resized_img = img.resize_exact(16, 16, image::imageops::FilterType::Nearest);
-        let features = resized_img.pixels()
+        let features = resized_img
+            .pixels()
             .flat_map(|(_, _, pixel)| pixel.0.to_vec())
             .map(|value| value as f32 / 255.0)
             .collect();
         Ok(features)
     }
 
-
-    fn init_model_weights(&self,cols_x_len: usize, rows_w_len: usize) -> Vec<f32> {
+    fn init_model_weights(&self, cols_x_len: usize, rows_w_len: usize) -> Vec<f32> {
         let mut rng = rand::thread_rng();
         let between = Uniform::from(-1.0..1.0);
         let mut weights = vec![0.0; rows_w_len];
@@ -148,67 +172,61 @@ impl RBFN {
         weights
     }
 
-
-
-    fn save_model_rbfn(model_weight: &[f32], file_path: &Path, efficiency: f32) -> Result<(), io::Error> {
+    fn save_model(&self, file_path: &Path) -> io::Result<()> {
         let mut file = File::create(file_path)?;
-        writeln!(file, "-- Efficiency --\n{}", efficiency)?;
-        writeln!(file, "-- Weights --")?;
-        for &weight in model_weight {
-            writeln!(file, "{{{}}}", weight)?;
+
+        writeln!(file, "-- Centers --")?;
+        for center in &self.centers {
+            let center_str = center.iter().map(|c| c.to_string()).collect::<Vec<String>>().join(",");
+            writeln!(file, "{}", center_str)?;
         }
+
+        writeln!(file, "-- Weights --")?;
+        for weight in &self.weights {
+            writeln!(file, "{}", weight)?;
+        }
+
         Ok(())
     }
-    fn evaluate_model(rbfn: &RBFN, features: &[Vec<f32>], labels: &[i32]) -> f32 {
+
+    fn load_model(&mut self, file_path: &Path) -> io::Result<()> {
+        let file = File::open(file_path)?;
+        let reader = BufReader::new(file);
+        let mut line_iter = reader.lines().filter_map(|line| line.ok());
+
+        while let Some(line) = line_iter.next() {
+            if line.starts_with("-- Centers --") {
+                for center in self.centers.iter_mut() {
+                    if let Some(center_line) = line_iter.next() {
+                        let values: Vec<f32> = center_line.split(',')
+                            .map(|s| s.trim().parse().unwrap_or(0.0))
+                            .collect();
+                        *center = values;
+                    }
+                }
+            } else if line.starts_with("-- Weights --") {
+                for weight in self.weights.iter_mut() {
+                    if let Some(weight_line) = line_iter.next() {
+                        *weight = weight_line.trim().parse().unwrap_or(0.0);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn evaluate(&self, features: &[Vec<f32>], labels: &[i32]) -> f32 {
         let mut correct_predictions = 0;
         for (feature, &label) in features.iter().zip(labels.iter()) {
-            let prediction = if rbfn.predict(feature) >= 0.0 { 1 } else { -1 };
+            let prediction = if self.predict(feature) >= 0.0 { 1 } else { -1 };
             if prediction == label {
                 correct_predictions += 1;
             }
         }
         correct_predictions as f32 / labels.len() as f32
     }
-    fn load_model_weights(&self,file_path: &Path, colX: i32, rowW: i32) -> io::Result<(Vec<f32>, f32)> {
-
-        let mut weights = Vec::new();
-        let mut efficiency = 0.0;
-
-        if fs::metadata(file_path).is_ok() {
-
-            let file = File::open(file_path)?;
-            let reader = BufReader::new(file);
-            let mut read_efficiency = false;
-
-            for line in reader.lines() {
-                let line = line?;
-                if line.starts_with("-- Efficiency --") {
-                    read_efficiency = true;
-                    continue;
-                }
-
-                if read_efficiency {
-                    efficiency = line.parse::<f32>().unwrap_or_else(|_| 0.0);
-                    read_efficiency = false;
-                    continue;
-                }
-
-                if line.starts_with("{") && line.ends_with("}") {
-                    let weight_str = &line[1..line.len()-1];
-                    match weight_str.trim().parse::<f32>() {
-                        Ok(weight) => weights.push(weight),
-                        Err(_) => continue,
-                    }
-                }
-            }
-        } else {
-            weights = self.init_model_weights(colX as usize, rowW as usize)
-        }
-
-
-
-        Ok((weights, efficiency))
-    }
+}
 
     fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
         let rows_x_len = x.len();
@@ -216,21 +234,17 @@ impl RBFN {
         let rows_w_len = cols_x_len + 1;
         (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
     }
-}
-
-
 
 pub(crate) fn main() -> io::Result<()> {
-
-    let mode = "test";
+    let mode = "train"; // Changez "train" ou "test" selon le mode souhaité
 
     match mode {
         "train" => {
             train_model()?;
-        },
+        }
         "test" => {
-            test_classification()?;
-        },
+            test_model()?
+        }
         _ => {
             println!("Invalid mode. Please choose 'train' or 'test'.");
         }
@@ -240,59 +254,63 @@ pub(crate) fn main() -> io::Result<()> {
 }
 
 fn train_model() -> io::Result<()> {
-    println!("Training mode selected...");
-
-    let iteration = 50;
     let base_training_path = Path::new("images_16/Training");
-    let base_test_path = Path::new("images_16/Test");
-    let target_list = vec!["Tomato", "Orange", "Aubergine"];
-    let non_target_list = vec!["Orange", "Aubergine", "Tomato"];
+    let target_categories = vec!["Tomato", "Orange", "Aubergine"];
     let num_centers = 5;
-    let input_dimension = 256;
-    let beta = 1.0;
-    let num_epochs = 10;
-    let learning_rate = 0.01;
-    let mut rbfn = RBFN::new(num_centers, input_dimension, beta);
+    let input_dimension = IMAGE_SIZE; // Assurez-vous que cela correspond à la taille de l'image après traitement
+    let beta = 1; // Ajustez si nécessaire
+    let num_epochs = 200;
+    let learning_rate = 0.001;
 
-    for iter in 0..iteration { // Exemple avec 1 itération pour la simplicité
-        println!("------- ITERATION {} -------", iter);
-        for i in 0..target_list.len() {
-            let (train_features, train_labels) = rbfn.load_image_data(&base_training_path, target_list[i], non_target_list[i])?;
-            rbfn.train(&train_features, &train_labels, num_epochs, learning_rate);
+    for target_category in &target_categories {
+        let mut rbfn = RBFN::new(num_centers, input_dimension);
+        // Utilisez directement `x` et `target_category` sans déréférencement supplémentaire
+        let non_target_categories: Vec<&str> = target_categories.iter().filter(|&x| x != target_category).cloned().collect();
 
-            let training_accuracy = RBFN::evaluate_model(&rbfn, &train_features, &train_labels);
-            println!("Training Accuracy for {}: {}%", target_list[i], training_accuracy * 100.0);
+        println!("Training for category: {}", target_category);
+        let (features, labels) = rbfn.load_image_data(&base_training_path, target_category, &non_target_categories)?;
 
-            let (test_features, test_labels) = rbfn.load_image_data(&base_test_path, target_list[i], non_target_list[i])?;
-
-            let test_accuracy = RBFN::evaluate_model(&rbfn, &test_features, &test_labels);
-            println!("Test Accuracy for {}: {}%", target_list[i], test_accuracy * 100.0);
+        if features.is_empty() {
+            println!("No training data found for {}", target_category);
+            continue;
         }
-    }
 
-    // Enregistrement du modèle
-    let model_file_path = Path::new("rbfn_model_weights.txt");
-    RBFN::save_model_rbfn(&rbfn.weights, model_file_path, 1.0);
+        rbfn.train(&features, &labels, num_epochs, learning_rate);
+
+        // Évaluez le modèle sur les données d'entraînement
+        let accuracy = rbfn.evaluate(&features, &labels);
+        println!("Training accuracy for {}: {:.2}%", target_category, accuracy * 100.0);
+
+        let model_file_path = format!("rbfn_model_weights_{}.txt", target_category);
+        rbfn.save_model(Path::new(&model_file_path))?;
+    }
 
     Ok(())
 }
 
-fn test_classification() -> io::Result<()> {
-    println!("Test mode selected...");
 
-    // Supposition : `load_model_weights` est correctement implémentée pour configurer `rbfn` avec les poids sauvegardés
-    let model_file_path = Path::new("rbfn_model_weights.txt");
-    let mut rbfn = RBFN::new(5, 256, 1.0); // Assurez-vous que ces valeurs correspondent à celles utilisées pour l'entraînement
-    let (weights, efficiency) = rbfn.load_model_weights(model_file_path, 256, 6)?;
-    rbfn.weights = weights; // Assurez-vous que votre structure RBFN peut accepter des poids chargés comme ceci
+fn test_model() -> io::Result<()> {
+    let base_test_path = Path::new("images_16\\Test");
+    let target_categories = vec!["Tomato", "Orange", "Aubergine"];
+    let input_dimension = IMAGE_SIZE; // Assurez-vous que cela correspond à la taille de l'image après traitement
 
-    // Chargement et traitement d'une image de test
-    let test_image_path = Path::new("images_16/CHECK/Orange/orange.jpg"); // Mettez à jour le chemin selon besoin
-    let test_features = RBFN::process_image(test_image_path)?;
+    for target_category in &target_categories {
+        let model_file_path = format!("rbfn_model_weights_{}.txt", target_category);
+        let mut rbfn = RBFN::new(0, input_dimension); // Temporairement initialisé avec 0 centres, sera chargé du fichier
+        rbfn.load_model(Path::new(&model_file_path))?;
 
-    // Prédiction
-    let prediction = rbfn.predict(&test_features);
-    println!("Prediction for test image: {}", prediction);
+        let non_target_categories: Vec<&str> = target_categories.iter().filter(|&&x| x != *target_category).map(|&x| x).collect();
+
+        let (test_features, test_labels) = rbfn.load_image_data(&base_test_path, target_category, &non_target_categories)?;
+        if test_features.is_empty() {
+            println!("No test data found for {}", target_category);
+            continue;
+        }
+
+        // Evaluate model on test data
+        let accuracy = rbfn.evaluate(&test_features, &test_labels);
+        println!("Test accuracy for {}: {:.2}%", target_category, accuracy * 100.0);
+    }
 
     Ok(())
 }
