@@ -1,5 +1,3 @@
-#[warn(dead_code)]
-
 extern crate image;
 extern crate rand;
 
@@ -22,6 +20,8 @@ struct MLP {
     weights: Vec<Vec<Vec<f32>>>,
     outputs: Vec<Vec<f32>>,
     deltas: Vec<Vec<f32>>,
+    train_errors: Vec<f32>,
+    test_errors: Vec<f32>,
 }
 
 
@@ -35,6 +35,8 @@ impl MLP {
         let mut weights = Vec::new();
         let mut outputs = Vec::new();
         let mut deltas = Vec::new();
+        let mut train_errors = Vec::new();
+        let mut test_errors = Vec::new();
 
         // Initialisation des poids et des structures pour chaque couche
         for l in 0..layers {
@@ -59,19 +61,11 @@ impl MLP {
             weights,
             outputs,
             deltas,
+            train_errors,
+            test_errors,
         }
     }
-    fn augment_image(image: DynamicImage) -> DynamicImage {
-        let mut rng = rand::thread_rng();
-        if rng.gen_bool(0.5) {
-            image.fliph()
-        } else {
-            image
-        }
-    }
-
-
-        // Fonction d'activation sigmoidale
+    // Fonction d'activation sigmoidale
     fn sigmoid(x: f32) -> f32 {
         1.0 / (1.0 + E.powf(-x))
     }
@@ -89,7 +83,9 @@ impl MLP {
 
     // Calcul de l'erreur d'entropie croisée
     fn cross_entropy_error(output: &Vec<f32>, expected: &[f32]) -> f32 {
+        let epsilon = 1e-10;
         expected.iter().zip(output.iter()).map(|(&e, &o)| {
+            let o = o.clamp(epsilon, 1.0 - epsilon); // Assure que o est dans l'intervalle [epsilon, 1-epsilon]
             if e == 1.0 { -o.ln() } else { -(1.0 - o).ln() }
         }).sum()
     }
@@ -121,7 +117,7 @@ impl MLP {
     }
 
     // Rétropropagation pour calculer les deltas
-    fn backward_propagate_error(&mut self, expected: &[f32]) {
+    fn backward_propagate_error(&mut self, expected: Vec<f32>) {
         for l in (0..self.layers).rev() {
             let errors: Vec<f32>;
 
@@ -164,21 +160,19 @@ impl MLP {
     }
 
     // Entraînement du réseau avec un ensemble de données, un taux d'apprentissage et un nombre d'itérations
-    fn train(&mut self, training_data: &Vec<(Vec<f32>, Vec<f32>)>, learning_rate: f32, n_iterations: usize) {
-        for epoch in 0..n_iterations {
-            let mut total_error = 0.0;
+    fn train(&mut self, training_data: &Vec<(Vec<f32>, Vec<f32>)>, learning_rate: f32, iter_num: usize) {
+        let mut total_error = 0.0;
 
-            // Propagation et rétropropagation pour chaque exemple d'entraînement
-            for (inputs, expected) in training_data {
-                let outputs = self.forward_propagate(inputs.clone());
-                total_error += MLP::cross_entropy_error(&outputs, expected);
-                self.backward_propagate_error(&expected.clone());
-                self.update_weights(inputs.clone(), learning_rate);
-            }
-
-            // Affichage de l'erreur moyenne après chaque époque
-            println!("Époque {}: Erreur moyenne = {}", epoch + 1, total_error / training_data.len() as f32);
+        // Propagation et rétropropagation pour chaque exemple d'entraînement
+        for (inputs, expected) in training_data {
+            let outputs = self.forward_propagate(inputs.clone());
+            total_error += MLP::cross_entropy_error(&outputs, expected);
+            self.backward_propagate_error(expected.clone());
+            self.update_weights(inputs.clone(), learning_rate);
         }
+
+        // Affichage de l'erreur moyenne après chaque époque
+        println!("Époque {}: Erreur moyenne = {}", iter_num, total_error / training_data.len() as f32);
     }
 
     // Sauvegarde des poids du réseau dans un fichier
@@ -234,48 +228,10 @@ impl MLP {
     }
 }
 
-// Chargement des images d'entraînement et de test en vecteurs normalisés
-fn load_images(folder_path: &str, augment: bool) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
-    let mut data = Vec::new();
-    let categories = ["Aubergine", "Orange", "Tomato"];
-    for (label, category) in categories.iter().enumerate() {
-        let category_path = Path::new(folder_path).join(category);
-        for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let img_path = entry.path();
-            let img = MLP::open_and_process_image(img_path.to_str().ok_or("Erreur de chemin d'image")?)
-                .map_err(|e| e.to_string())?;
-
-            // Appliquer l'augmentation de données si nécessaire
-            let img = if augment { MLP::augment_image(img) } else { img };
-
-            let pixels = MLP::image_to_pixels(&img);
-            let mut label_vec = vec![0.0; categories.len()];
-            label_vec[label] = 1.0;
-            data.push((pixels, label_vec));
-        }
-    }
-    Ok(data)
-}
-// Évaluation de la précision du modèle sur les données de test
-fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>) -> f32 {
-    let mut correct_predictions = 0;
-    for (pixels, expected) in test_data { // Utiliser une référence ici
-        let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
-        if predicted == expected.iter().position(|&r| r == 1.0).unwrap() {
-            correct_predictions += 1;
-        }
-    }
-    let accuracy = correct_predictions as f32 / test_data.len() as f32;
-    println!("Précision : {}", accuracy);
-
-    return 1.0-accuracy;
-}
-
-fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, cat1: String, cat2: String, cat3: String) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("Stats MLP.png");
-    let title = format!("Training and Test Errors Over Iteration: {}/{}/{}", cat1, cat2, cat3);
+    let title = "Training and Test Errors Over Iteration";
     let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
@@ -303,59 +259,89 @@ fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, cat1: String, ca
     Ok(())
 }
 
-fn split_data(data: Vec<(Vec<f32>, Vec<f32>)>, train_ratio: f32) -> (Vec<(Vec<f32>, Vec<f32>)>, Vec<(Vec<f32>, Vec<f32>)>) {
-    let train_size = (data.len() as f32 * train_ratio) as usize;
-    let (train_data, validation_data) = data.split_at(train_size);
-    (train_data.to_vec(), validation_data.to_vec())
+
+
+// Chargement des images d'entraînement et de test en vecteurs normalisés
+fn load_images(folder_path: &str) -> Result<Vec<(Vec<f32>, Vec<f32>)>, String> {
+    let mut data = Vec::new();
+    let categories = ["Aubergine", "Orange", "Tomato"];
+    for (label, category) in categories.iter().enumerate() {
+        let category_path = Path::new(folder_path).join(category);
+        for entry in fs::read_dir(category_path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let img_path = entry.path();
+            let img = MLP::open_and_process_image(img_path.to_str().ok_or("Erreur de chemin d'image")?)
+                .map_err(|e| e.to_string())?;
+            let pixels = MLP::image_to_pixels(&img);
+            let mut label_vec = vec![0.0; categories.len()];
+            label_vec[label] = 1.0;
+            data.push((pixels, label_vec));
+        }
+    }
+    Ok(data)
+}
+// Évaluation de la précision du modèle sur les données de test
+fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest : bool)-> f32 {
+    let mut correct_predictions = 0;
+    for (pixels, expected) in test_data { // Utiliser une référence ici
+        let predicted = mlp.predict(pixels.clone()); // Clone pixels car mlp.predict prend la possession
+        if predicted == expected.iter().position(|&r| r == 1.0).unwrap() {
+            correct_predictions += 1;
+        }
+    }
+    let accuracy = correct_predictions as f32 / test_data.len() as f32;
+    if(isTest){
+        mlp.test_errors.push(1.0-accuracy);
+    }else{
+        mlp.train_errors.push(1.0-accuracy);
+    }
+    println!("Précision : {}", accuracy);
+
+    return accuracy;
 }
 
 
 // Fonction principale pour exécuter les opérations du MLP
+pub fn run_mlp_model(mode: &str) -> io::Result<()> {
 
-pub fn run_mlp_model() -> io::Result<()> {
+    if(mode == "train") {should_train = false;}
+    else{should_train = true;};
 
-    let mut train_errors: Vec<f32> = Vec::new();
-    let mut test_errors: Vec<f32> = Vec::new();
-    let categories = ["Aubergine", "Orange", "Tomato"];
+    let training_data = load_images("images_16/Training").expect("Erreur lors du chargement des images d'entraînement");
+    let test_data = load_images("images_16/Test").expect("Erreur lors du chargement des images de test");
+    let taille_image = training_data[0].0.len();
 
-    let should_train = false; // Mettez à true pour entraîner, false pour charger les poids et prédire
-        // ... (Initialisation, chargement des données, etc.)
+    let mut mlp = MLP::new(vec![taille_image, 75, 15, 3]);
 
-        let training_data_all = load_images("images/Training", true).expect("Erreur lors du chargement des images d'entraînement");
-        let (training_data, validation_data) = split_data(training_data_all, 0.8);
-        let test_data = load_images("images/Test", false).expect("Erreur lors du chargement des images de test");
-        let taille_image = training_data[0].0.len();
+    let mut lastPerf = 0.0;
 
-        let mut best_accuracy = 0.0;
-        let weights_file_path = "model_weights_mlp.json";
+    if should_train {
+        for iter in 0..250{
 
-        for iter in 0..20 {
-            let mut mlp = MLP::new(vec![taille_image, 128, 64, 3]);
+            mlp.train(&training_data, 0.001, iter);
+            let result = evaluate_model(&mut mlp, &test_data, true);
+            if(result > lastPerf){
+                lastPerf = result;
+                mlp.save_weights("model_weights_mlp.json").expect("Cannot save weights");
+            }
+            evaluate_model(&mut mlp, &training_data, false);
 
             if should_train {
-                mlp.train(&training_data, 0.01, iter + 1);
 
-                let validation_accuracy = evaluate_model(&mut mlp, &validation_data);
-                println!("Validation Accuracy: {}", validation_accuracy);
-
-                // Enregistrer les poids si la précision de validation est meilleure
-                if validation_accuracy > best_accuracy {
-                    best_accuracy = validation_accuracy;
-                    mlp.save_weights(weights_file_path).expect("Erreur lors de l'enregistrement des poids");
-                }
-
-                train_errors.push(evaluate_model(&mut mlp, &training_data));
-                test_errors.push(evaluate_model(&mut mlp, &test_data));
-            } else {
-                mlp.load_weights(weights_file_path).expect("Erreur lors du chargement des poids");
-                let img_path = "images/check/Aubergine/aubergine1.jpg"; // Remplacez par le chemin d'accès réel
-                let predicted_category = mlp.predict_image(img_path, &categories);
-                match predicted_category {
-                    Ok(category) => println!("Catégorie prédite : {}", category),
-                    Err(error) => println!("Erreur lors de la prédiction : {}", error)
-                }
-                evaluate_model(&mut mlp, &test_data);
             }
         }
-    plot_errors(&train_errors, &test_errors, categories[0].to_string(), categories[1].to_string(), categories[2].to_string()).expect("Erreur lors de la création du graphique");
+    }else {
+        mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
+        let categories = ["Aubergine", "Orange", "Tomato"];
+        let img_path = "images_16/CHECK/Orange/orange3.jpg"; // Mettez ici le chemin de votre image de test
+        let result = mlp.predict_image(img_path, &categories);
+        match result {
+            Ok(category) => println!("Catégorie prédite : {}", category),
+            Err(error) => println!("Erreur : {}", error),
+        }
+    }
+
+    plot_errors(&mlp.train_errors, &mlp.test_errors).expect("Error generating image");
+
+
 }

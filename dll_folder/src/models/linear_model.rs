@@ -187,10 +187,8 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
     (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
 }
 
-pub fn run_linear_model(mode: &str, category: usize) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
-
-    println!("{}", category);
     let CHECK;
 
     if(mode == "train") {CHECK = false;}
@@ -205,8 +203,8 @@ pub fn run_linear_model(mode: &str, category: usize) -> Result<(), Box<dyn std::
     weights_file_path_List.push("linear_model_weights_1.txt".to_string());
     weights_file_path_List.push("linear_model_weights_2.txt".to_string());
 
-    let base_training_path = Path::new("images/Training");
-    let base_test_path = Path::new("images/Test");
+    let base_training_path = Path::new("..\\images_32\\Training");
+    let base_test_path = Path::new("..\\images_32\\Test");
 
     let mut target_List: Vec<String> = Vec::new();
     target_List.push("Tomato".to_string());
@@ -231,7 +229,9 @@ pub fn run_linear_model(mode: &str, category: usize) -> Result<(), Box<dyn std::
 
         let mut result: Vec<String> = Vec::new();
 
-        let image_path = Path::new("images\\CHECK\\Aubergine\\orange2.jpg");
+        let image_path = Path::new("..\\images_32\\CHECK\\Aubergine\\aubergine1.jpg");
+
+
 
         let (train_features, _) = load_image_data(base_training_path, &target_List[predict_category], &non_target_List[predict_category])?;
 

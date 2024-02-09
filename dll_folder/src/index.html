@@ -28,6 +28,21 @@
             background-color: #037f58;
         }
 
+        .button_reload {
+            background-color: #2474b5;
+            border: none;
+            color: white;
+            text-align: center;
+            padding: 15px 32px;
+            text-decoration: none;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px; /* Ajoute un espace au-dessus du bouton */
+        }
+        .button_reload:hover {
+            background-color: #19578a;
+        }
+
         .radio-group {
             display: flex;
             gap: 10px;
@@ -90,6 +105,8 @@
     </style>
 </head>
 <body>
+<button id="reloadServer" class="button_reload">Reload DLL</button>
+
 <select  id="modelSelect">
     <option selected>-- Select Model --</option>
     <option value="linear_model">Linear Model</option>
@@ -118,18 +135,29 @@
 
 <button id="loadModel" class="button">Load Model</button>
 <div id="resultat"></div>
-
+<div id="resultat_reload"></div>
 <script>
+    document.getElementById('reloadServer').addEventListener('click', function() {
+        fetch('http://127.0.0.1:5000/reload_dll', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => console.log(data.message))
+            .catch(error => console.error('Error:', error));
+    });
+
+
+
     document.getElementById('loadModel').addEventListener('click', () => {
         const model = document.getElementById('modelSelect').value;
         const mode = document.querySelector('input[name="mode"]:checked').value;
-        const category = document.getElementById('modelSelectCategory').value;
+        const category = parseInt(document.getElementById('modelSelectCategory').value, 10);
+
 
         fetch('http://127.0.0.1:5000/run_algo', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
+
             body: JSON.stringify({model, mode, category}),
         })
             .then(response => response.json())
