@@ -84,15 +84,25 @@
             justify-content: center;
             width: 100%;
         }
+        .hidden_div{
+            display:none;
+        }
     </style>
 </head>
 <body>
-<select id="modelSelect">
+<select  id="modelSelect">
+    <option selected>-- Select Model --</option>
     <option value="linear_model">Linear Model</option>
     <option value="mlp_model">MLP Model</option>
     <option value="rbfn_model">RBFN Model</option>
-    <!-- Ajoutez d'autres modèles ici -->
 </select>
+
+<select class="hidden_div" id="modelSelectCategory">
+    <option  value=2>Aubergine</option>
+    <option  value=1>Orange</option>
+    <option value=0>Tomate</option>
+</select>
+
 
 <div class="parent_radio_div">
     <div class="child_radio_div">
@@ -113,13 +123,14 @@
     document.getElementById('loadModel').addEventListener('click', () => {
         const model = document.getElementById('modelSelect').value;
         const mode = document.querySelector('input[name="mode"]:checked').value;
+        const category = document.getElementById('modelSelectCategory').value;
 
         fetch('http://127.0.0.1:5000/run_algo', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({model, mode}),
+            body: JSON.stringify({model, mode, category}),
         })
             .then(response => response.json())
             .then(data => {
@@ -128,6 +139,26 @@
             })
             .catch(error => console.error('Erreur:', error));
     });
+
+    document.getElementById('modelSelect').addEventListener('change', function() {
+        const selected = this.value === "linear_model";
+        selectLinear(selected);
+    });
+
+    function selectLinear(selected){
+        console.log("here");
+        if(selected){
+            var element = document.getElementById("modelSelectCategory");
+            element.classList.remove("hidden_div");
+        }
+        else{
+            var element = document.getElementById("modelSelectCategory");
+            element.classList.add("hidden_div");
+        }
+
+    }
+
+
 </script>
 </body>
 </html>

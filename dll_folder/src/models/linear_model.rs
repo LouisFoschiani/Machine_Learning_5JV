@@ -13,8 +13,7 @@ use plotters::prelude::*;
 fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("index-{}.png", index);
-    //println!("Creating plot_errors file at: {}", name); // Ajout d'une instruction de débogage
-    let title = format!("Training and Test Errors Over Iteration: {}/{}", target, nonTarget);
+    let title = format!("Training and Test Errors Over Iteration: {} / {}", target, nonTarget);
     let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
@@ -43,9 +42,7 @@ fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, targ
 }
 
 
-fn load_image_data(base_path: &Path, target_category: &str, non_target_category: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
-    //println!("Loading image data from base_path: {:?}", base_path); // Débogage
-
+fn load_image_data(base_path: &Path, target_category: &str, non_target_categories: &Vec<String>) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
     let mut features = Vec::new();
     let mut labels = Vec::new();
 
@@ -62,23 +59,28 @@ fn load_image_data(base_path: &Path, target_category: &str, non_target_category:
     }
 
     // Load non-target category images
-    let non_target_path = base_path.join(non_target_category);
-    for entry in fs::read_dir(non_target_path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            let image_features = process_image(&path)?;
-            features.push(image_features);
-            labels.push(-1);
+
+    for non_target_category in non_target_categories.iter() {
+
+        let non_target_path = base_path.join(non_target_category);
+        for entry in fs::read_dir(non_target_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let image_features = process_image(&path)?;
+                features.push(image_features);
+                labels.push(-1);
+            }
         }
+
     }
+
+
 
     Ok((features, labels))
 }
 
 fn process_image(path: &Path) -> io::Result<Vec<f32>> {
-    //println!("Processing image at path: {:?}", path); // Débogage
-
     let img = image::open(path).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     let features = img.pixels()
         .flat_map(|(_, _, pixel)| pixel.0.to_vec())
@@ -128,8 +130,6 @@ fn train_linear_model(x: &[Vec<f32>], y: &[i32], w: &mut [f32], rows_x_len: i32,
 
 
 fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f32) -> Result<(), io::Error> {
-    //println!("Saving model linear to file_path: {:?}", file_path); // Débogage
-
     let mut file = File::create(file_path)?;
     writeln!(file, "-- Efficiency --\n{}", efficiency)?;
     writeln!(file, "-- Weights --")?;
@@ -140,7 +140,6 @@ fn save_model_linear(model_weight: &[f32], file_path: &Path, efficiency: f32) ->
 }
 
 fn load_model_weights(file_path: &Path, colX: i32, rowW: i32) -> io::Result<(Vec<f32>, f32)> {
-    //println!("Loading model weights from file_path: {:?}", file_path); // Débogage
 
     let mut weights = Vec::new();
     let mut efficiency = 0.0;
@@ -188,17 +187,16 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
     (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
 }
 
-pub fn run_linear_model(mode: &str) -> io::Result<()> {
+pub fn run_linear_model(mode: &str, category: usize) -> Result<(), Box<dyn std::error::Error>> {
 
-    println!("{}", mode);
+
+    println!("{}", category);
     let CHECK;
-    if(mode == "train") {
-        CHECK = false;
-    }
-    else{
-        CHECK = true;
-    };
 
+    if(mode == "train") {CHECK = false;}
+    else{CHECK = true;};
+
+    let predict_category = category;
 
     let iterations = 150;
 
@@ -207,18 +205,25 @@ pub fn run_linear_model(mode: &str) -> io::Result<()> {
     weights_file_path_List.push("linear_model_weights_1.txt".to_string());
     weights_file_path_List.push("linear_model_weights_2.txt".to_string());
 
-    let base_training_path = Path::new("..\\images_16\\Training");
-    let base_test_path = Path::new("..\\images_16\\Test");
+    let base_training_path = Path::new("images/Training");
+    let base_test_path = Path::new("images/Test");
 
     let mut target_List: Vec<String> = Vec::new();
     target_List.push("Tomato".to_string());
     target_List.push("Orange".to_string());
     target_List.push("Aubergine".to_string());
 
-    let mut non_target_List: Vec<String> = Vec::new();
-    non_target_List.push("Orange".to_string());
-    non_target_List.push("Aubergine".to_string());
-    non_target_List.push("Tomato".to_string());
+    let mut non_target_List: Vec<Vec<String>> = Vec::new();
+    non_target_List.push(Vec::new());
+    non_target_List.push(Vec::new());
+    non_target_List.push(Vec::new());
+
+    non_target_List[0].push("Orange".to_string());
+    non_target_List[0].push("Aubergine".to_string());
+    non_target_List[1].push("Tomato".to_string());
+    non_target_List[1].push("Aubergine".to_string());
+    non_target_List[2].push("Orange".to_string());
+    non_target_List[2].push("Tomato".to_string());
 
 
 
@@ -226,29 +231,25 @@ pub fn run_linear_model(mode: &str) -> io::Result<()> {
 
         let mut result: Vec<String> = Vec::new();
 
-        for i in 0..weights_file_path_List.len() {
+        let image_path = Path::new("images\\CHECK\\Aubergine\\orange2.jpg");
 
-            let image_path = Path::new("..\\images_16\\CHECK\\Tomato\\tomate1.jpg"); // Chemin vers l'image à tester
+        let (train_features, _) = load_image_data(base_training_path, &target_List[predict_category], &non_target_List[predict_category])?;
 
-            let (train_features, _) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
+        let (_, colsXLen, rowsWLen) = set_var(&train_features);
+        let (w, _) = load_model_weights(Path::new(&weights_file_path_List[predict_category]), colsXLen, rowsWLen)?;
 
-            let (_, colsXLen, rowsWLen) = set_var(&train_features);
-            let (w, _) = load_model_weights(Path::new(&weights_file_path_List[i]), colsXLen, rowsWLen)?;
+        // Traitement de l'image à tester
+        let image_features = process_image(&image_path)?;
 
-            // Traitement de l'image à tester
-            let image_features = process_image(&image_path)?;
-
-            // Faire une prédiction
-            let prediction = predict_linear_model_classification(&w, &image_features);
+        // Faire une prédiction
+        let prediction = predict_linear_model_classification(&w, &image_features);
 
 
-            // Afficher le résultat
-            if prediction == 1 {
-                result.push(target_List[i].to_string());
-            } else {
-                result.push(non_target_List[i].to_string());
-            }
-
+        // Afficher le résultat
+        if prediction == 1 {
+            result.push(target_List[predict_category].to_string());
+        } else {
+            result.push("Image inconue".to_string());
         }
 
 
@@ -362,7 +363,7 @@ pub fn run_linear_model(mode: &str) -> io::Result<()> {
         }
 
         for i in 0..weights_file_path_List.len() {
-            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), non_target_List[i].to_string()).expect("Erreur lors de la création du graphique");
+            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), format!("({0} | {1})", non_target_List[i][0].to_string(), non_target_List[i][1].to_string())).expect("Erreur lors de la création du graphique");
         }
 
 

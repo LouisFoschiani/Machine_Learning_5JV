@@ -10,19 +10,20 @@ use serde::{Deserialize};
 struct Config {
     model: String,
     mode: String,
+    category: usize,
 }
 
 #[no_mangle]
 pub extern "C" fn run_algo() {
     let config_contents = fs::read_to_string("config.json").expect("Failed to read config file");
     let config: Config = serde_json::from_str(&config_contents).expect("Failed to parse config");
-    println!("Model: {}, Mode: {}", config.model, config.mode);
+    println!("Model: {}, Mode: {}, Category: {}", config.model, config.mode, config.category);
     let algorithm_choice = config.model;
 
     match algorithm_choice.as_str() {
         "linear_model" => {
             println!("Running Linear Model Algorithm...");
-            match run_linear_model(config.mode.as_str()) {
+            match run_linear_model(config.mode.as_str(),config.category) {
                 Ok(_) => println!("Linear Model completed successfully."),
                 Err(e) => println!("Linear Model encountered an error: {}", e),
             }
