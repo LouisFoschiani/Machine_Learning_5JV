@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Appel DLL Rust depuis Web</title>
+    <style>
+        body {
+            background-color: black;
+            display: flex;
+            flex-direction: column; /* Organise les enfants en colonne */
+            justify-content: center; /* Centre horizontalement */
+            align-items: center; /* Centre verticalement */
+            height: 100vh; /* Utilise 100% de la hauteur de la fenêtre */
+            margin: 0; /* Enlève les marges par défaut */
+        }
+
+        .button {
+            background-color: #04AA6D;
+            border: none;
+            color: white;
+            text-align: center;
+            padding: 15px 32px;
+            text-decoration: none;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px; /* Ajoute un espace au-dessus du bouton */
+        }
+        .button:hover {
+            background-color: #037f58;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .radio-group input[type="radio"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #04AA6D;
+            border-radius: 50%;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .radio-group label {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .radio-group input[type="radio"]:checked {
+            background-color: #04AA6D;
+        }
+
+        select, .radio-group {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            outline: none;
+        }
+
+        #resultat {
+            color: white;
+            margin-top: 20px; /* Ajoute un espace au-dessus du résultat */
+        }
+        .label{
+            color: white;
+            display: flex;
+            justify-content: center;
+            margin: auto;
+        }
+        .parent_radio_div{
+            display: flex;
+            justify-content: center;
+            width: 10%;
+        }
+        .child_radio_div{
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+<select id="modelSelect">
+    <option value="linear_model">Linear Model</option>
+    <option value="mlp_model">MLP Model</option>
+    <option value="rbfn_model">RBFN Model</option>
+    <!-- Ajoutez d'autres modèles ici -->
+</select>
+
+<div class="parent_radio_div">
+    <div class="child_radio_div">
+        <input class="radio-group" type="radio" id="train" name="mode" value="train" checked>
+        <label class="label" for="train">Train</label>
+    </div>
+    <div class="child_radio_div">
+        <input class="radio-group"type="radio" id="predict" name="mode" value="predict">
+        <label class="label" for="predict">Predict</label>
+    </div>
+</div>
+
+
+<button id="loadModel" class="button">Load Model</button>
+<div id="resultat"></div>
+
+<script>
+    document.getElementById('loadModel').addEventListener('click', () => {
+        const model = document.getElementById('modelSelect').value;
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+
+        fetch('http://127.0.0.1:5000/run_algo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({model, mode}),
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Resultat :', data.resultat);
+                document.getElementById('resultat').textContent = 'Resultat : ' + data.resultat;
+            })
+            .catch(error => console.error('Erreur:', error));
+    });
+</script>
+</body>
+</html>
