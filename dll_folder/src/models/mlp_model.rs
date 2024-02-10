@@ -304,7 +304,7 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     let taille_image = training_data[0].0.len();
 
     // taille image, couche d'entrée, couche cachée, sortie
-    let mut mlp = MLP::new(vec![taille_image, 768, 48, 3]);
+    let mut mlp = MLP::new(vec![taille_image, 768, 96, 3]);
 
     let mut lastPerf = 0.0;
 
