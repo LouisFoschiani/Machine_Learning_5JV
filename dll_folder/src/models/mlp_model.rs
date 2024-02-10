@@ -1,18 +1,3 @@
-extern crate image;
-extern crate rand;
-
-use image::{DynamicImage, GenericImageView, ImageError};
-use rand::Rng;
-use std::{fs, iter, path::Path};
-use std::f32::consts::E;
-use std::fs::File;
-use std::io::{self, Read, Write};
-use plotters::backend::BitMapBackend;
-use plotters::chart::ChartBuilder;
-use plotters::element::PathElement;
-use plotters::prelude::{BLACK, BLUE, IntoFont, LineSeries, RED, WHITE};
-use serde_json;
-use plotters::prelude::*;
 
 struct MLP {
     layers: usize,
@@ -205,6 +190,7 @@ impl MLP {
             .map_err(|e| e.to_string())?;
         let pixels: Vec<f32> = Self::image_to_pixels(&img);
         let predicted_index = self.predict(pixels);
+        save_prediction_to_file("mlp_model", predicted_index);
         categories.get(predicted_index)
             .map(|&category| category.to_string())
             .ok_or("Catégorie non trouvée".to_string())
@@ -228,7 +214,15 @@ impl MLP {
     }
 }
 
-fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>) -> Result<(), Box<dyn std::error::Error>> {
+
+
+fn plot_errors_mlp(
+    train_errors: &Vec<f32>,
+    test_errors: &Vec<f32>,
+    index: i32,
+    target: String,
+    nonTarget: String
+) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("Stats MLP.png");
     let title = "Training and Test Errors Over Iteration";
@@ -300,15 +294,22 @@ fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest :
     return accuracy;
 }
 
+fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
+    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
+    fs::write("prediction.json", prediction_data)?;
+    Ok(())
+}
 
-// Fonction principale pour exécuter les opérations du MLP
 pub fn run_mlp_model(mode: &str) -> io::Result<()> {
 
-    if(mode == "train") {should_train = false;}
-    else{should_train = true;};
+    let should_train;
 
-    let training_data = load_images("images_16/Training").expect("Erreur lors du chargement des images d'entraînement");
-    let test_data = load_images("images_16/Test").expect("Erreur lors du chargement des images de test");
+    if(mode == "train") {should_train = true;}
+    else{should_train = false;};
+
+
+    let training_data = load_images("..\\images_16\\Training").expect("Erreur lors du chargement des images d'entraînement");
+    let test_data = load_images("..\\images_16\\Test").expect("Erreur lors du chargement des images de test");
     let taille_image = training_data[0].0.len();
 
     let mut mlp = MLP::new(vec![taille_image, 75, 15, 3]);
@@ -326,22 +327,31 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
             }
             evaluate_model(&mut mlp, &training_data, false);
 
-            if should_train {
-
-            }
         }
     }else {
         mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
         let categories = ["Aubergine", "Orange", "Tomato"];
-        let img_path = "images_16/CHECK/Orange/orange3.jpg"; // Mettez ici le chemin de votre image de test
+        let img_path = "..\\images_16\\CHECK\\Orange\\orange3.jpg"; // Mettez ici le chemin de votre image de test
         let result = mlp.predict_image(img_path, &categories);
+
         match result {
             Ok(category) => println!("Catégorie prédite : {}", category),
             Err(error) => println!("Erreur : {}", error),
         }
+
     }
 
-    plot_errors(&mlp.train_errors, &mlp.test_errors).expect("Error generating image");
+    let index_value: i32 = 10;
+    let target_category: String = "Tomate".to_string();
+    let non_target_category: String = "Orange".to_string();
 
+    plot_errors_mlp(
+        &mlp.train_errors,
+        &mlp.test_errors,
+        index_value,
+        target_category,
+        non_target_category,
+    ).expect("Error generating image");
+    Ok(())
 
 }

@@ -11,7 +11,12 @@
             align-items: center; /* Centre verticalement */
             height: 100vh; /* Utilise 100% de la hauteur de la fenêtre */
             margin: 0; /* Enlève les marges par défaut */
+            background-image: url('../images/ia.png'); /* Ajoutez le chemin relatif de votre image */
+            background-size: cover; /* Assure que l'image couvre tout l'espace disponible */
+            background-position: center; /* Centre l'image */
+            background-repeat: no-repeat; /* Empêche la répétition de l'image */
         }
+
 
         .button {
             background-color: #04AA6D;
@@ -79,10 +84,6 @@
             outline: none;
         }
 
-        #resultat {
-            color: white;
-            margin-top: 20px; /* Ajoute un espace au-dessus du résultat */
-        }
         .label{
             color: white;
             display: flex;
@@ -102,11 +103,19 @@
         .hidden_div{
             display:none;
         }
+        .res_prediction{
+            margin-top: 20px;
+            background-color: white;
+            color: black;
+            font-weight: bold;
+            font-size: 28px;
+            padding: 1%;
+        }
     </style>
 </head>
 <body>
-<button id="reloadServer" class="button_reload">Reload DLL</button>
-
+<!--<button id="reloadServer" class="button_reload">Reload DLL</button>-->
+<h1 style="color:white;font-weight:bold">Machine Learning</h1>
 <select  id="modelSelect">
     <option selected>-- Select Model --</option>
     <option value="linear_model">Linear Model</option>
@@ -134,15 +143,15 @@
 
 
 <button id="loadModel" class="button">Load Model</button>
-<div id="resultat"></div>
+<div class="res_prediction" id="resultat"></div>
 <div id="resultat_reload"></div>
 <script>
-    document.getElementById('reloadServer').addEventListener('click', function() {
+    /*document.getElementById('reloadServer').addEventListener('click', function() {
         fetch('http://127.0.0.1:5000/reload_dll', { method: 'POST' })
             .then(response => response.json())
             .then(data => console.log(data.message))
             .catch(error => console.error('Error:', error));
-    });
+    });*/
 
 
 
@@ -150,8 +159,9 @@
         const model = document.getElementById('modelSelect').value;
         const mode = document.querySelector('input[name="mode"]:checked').value;
         const category = parseInt(document.getElementById('modelSelectCategory').value, 10);
-
-
+        const categoryElement = document.getElementById('modelSelectCategory');
+        const categoryText = categoryElement.options[categoryElement.selectedIndex].text;
+        let prediction_linear = "";
         fetch('http://127.0.0.1:5000/run_algo', {
             method: 'POST',
             headers: {
@@ -162,10 +172,15 @@
         })
             .then(response => response.json())
             .then(data => {
-                console.log('Resultat :', data.resultat);
-                document.getElementById('resultat').textContent = 'Resultat : ' + data.resultat;
+                if(data.model == "linear_model"){
+                    if(data.prediction == 1) prediction_linear = categoryText;
+                    else prediction_linear = "Mauvaise prediction";
+                }
+                console.log(data.prediction)
+                document.getElementById('resultat').textContent = 'Prediction : ' + prediction_linear;
             })
-            .catch(error => console.error('Erreur:', error));
+
+                .catch(error => console.error('Erreur:', error));
     });
 
     document.getElementById('modelSelect').addEventListener('change', function() {

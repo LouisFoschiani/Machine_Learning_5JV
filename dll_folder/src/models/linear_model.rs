@@ -1,16 +1,5 @@
-use std::collections::HashMap;
-#[warn(non_snake_case)]
 
-use image::{self, GenericImageView};
-use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
-use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Write};
-use std::path::{Path};
-use plotters::prelude::*;
-
-
-fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_errors_linear(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("index-{}.png", index);
     let title = format!("Training and Test Errors Over Iteration: {} / {}", target, nonTarget);
@@ -187,6 +176,12 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
     (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
 }
 
+fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
+    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
+    fs::write("prediction.json", prediction_data)?;
+    Ok(())
+}
+
 pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
     let CHECK;
@@ -251,7 +246,7 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
         } else {
             result.push("Image inconue".to_string());
         }
-
+        save_prediction_to_file("linear_model",prediction);
 
         let mut resultCount = HashMap::new();
 
@@ -363,7 +358,7 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
         }
 
         for i in 0..weights_file_path_List.len() {
-            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), format!("({0} | {1})", non_target_List[i][0].to_string(), non_target_List[i][1].to_string())).expect("Erreur lors de la création du graphique");
+            plot_errors_linear(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), format!("({0} | {1})", non_target_List[i][0].to_string(), non_target_List[i][1].to_string())).expect("Erreur lors de la création du graphique");
         }
 
 

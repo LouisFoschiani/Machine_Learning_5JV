@@ -21,6 +21,8 @@ cd .. && cargo build --release && cd src && python app.py
 def reload_dll():
    subprocess.run(['C:\\Users\\Louis\\Documents\\GitHub\\Machine_Learning_5JV\\dll_folder\\restart_app.bat'], shell=True)
    return jsonify({"message": "DLL reload triggered successfully"}), 200
+
+
 @app.route('/run_algo', methods=['POST'])
 def run_algo():
 
@@ -28,12 +30,13 @@ def run_algo():
     with open('config.json', 'w') as config_file:
         json.dump(data, config_file)
 
-
+    with open('prediction.json', 'r') as file:
+        prediction_data = json.load(file)
 
     resultat = ma_lib.run_algo()
 
     # Retourner le résultat en JSON
-    return jsonify(resultat=resultat)
+    return jsonify(prediction_data)
 
 if __name__ == '__main__':
     app.run(debug=True)

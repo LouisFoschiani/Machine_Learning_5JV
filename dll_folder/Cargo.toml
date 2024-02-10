@@ -15,6 +15,7 @@ serde_json = "1.0"
 ndarray = "0.15.4"
 diff = { version = "0.1.13", features = [] }
 plotters = "0.3"
-
+[profile.dev]
+rustc-flags = ["-A", "warnings"]
 [lib]
 crate-type = ["cdylib"]
