@@ -13,7 +13,7 @@ use plotters::prelude::*;
 fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("index-{}.png", index);
-    let title = format!("Training and Test Errors Over Iteration: {}/{}", target, nonTarget);
+    let title = format!("Training and Test Errors Over Iteration: {} / {}", target, nonTarget);
     let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
     let mut chart = ChartBuilder::on(&root)
@@ -42,7 +42,7 @@ fn plot_errors(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, targ
 }
 
 
-fn load_image_data(base_path: &Path, target_category: &str, non_target_category: &str) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
+fn load_image_data(base_path: &Path, target_category: &str, non_target_categories: &Vec<String>) -> io::Result<(Vec<Vec<f32>>, Vec<i32>)> {
     let mut features = Vec::new();
     let mut labels = Vec::new();
 
@@ -59,16 +59,23 @@ fn load_image_data(base_path: &Path, target_category: &str, non_target_category:
     }
 
     // Load non-target category images
-    let non_target_path = base_path.join(non_target_category);
-    for entry in fs::read_dir(non_target_path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_file() {
-            let image_features = process_image(&path)?;
-            features.push(image_features);
-            labels.push(-1);
+
+    for non_target_category in non_target_categories.iter() {
+
+        let non_target_path = base_path.join(non_target_category);
+        for entry in fs::read_dir(non_target_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let image_features = process_image(&path)?;
+                features.push(image_features);
+                labels.push(-1);
+            }
         }
+
     }
+
+
 
     Ok((features, labels))
 }
@@ -182,7 +189,8 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
 
 pub(crate) fn main() -> io::Result<()> {
 
-    let CHECK = false;
+    let CHECK = true;
+    let predict_category = 2;
 
     let iterations = 150;
 
@@ -199,10 +207,17 @@ pub(crate) fn main() -> io::Result<()> {
     target_List.push("Orange".to_string());
     target_List.push("Aubergine".to_string());
 
-    let mut non_target_List: Vec<String> = Vec::new();
-    non_target_List.push("Orange".to_string());
-    non_target_List.push("Aubergine".to_string());
-    non_target_List.push("Tomato".to_string());
+    let mut non_target_List: Vec<Vec<String>> = Vec::new();
+    non_target_List.push(Vec::new());
+    non_target_List.push(Vec::new());
+    non_target_List.push(Vec::new());
+
+    non_target_List[0].push("Orange".to_string());
+    non_target_List[0].push("Aubergine".to_string());
+    non_target_List[1].push("Tomato".to_string());
+    non_target_List[1].push("Aubergine".to_string());
+    non_target_List[2].push("Orange".to_string());
+    non_target_List[2].push("Tomato".to_string());
 
 
 
@@ -210,29 +225,25 @@ pub(crate) fn main() -> io::Result<()> {
 
         let mut result: Vec<String> = Vec::new();
 
-        for i in 0..weights_file_path_List.len() {
+        let image_path = Path::new("images\\CHECK\\Aubergine\\aubergine3.jpg");
 
-            let image_path = Path::new("images\\CHECK\\Aubergine\\aubergine2.jpeg"); // Chemin vers l'image à tester
+        let (train_features, _) = load_image_data(base_training_path, &target_List[predict_category], &non_target_List[predict_category])?;
 
-            let (train_features, _) = load_image_data(base_training_path, &target_List[i], &non_target_List[i])?;
+        let (_, colsXLen, rowsWLen) = set_var(&train_features);
+        let (w, _) = load_model_weights(Path::new(&weights_file_path_List[predict_category]), colsXLen, rowsWLen)?;
 
-            let (_, colsXLen, rowsWLen) = set_var(&train_features);
-            let (w, _) = load_model_weights(Path::new(&weights_file_path_List[i]), colsXLen, rowsWLen)?;
+        // Traitement de l'image à tester
+        let image_features = process_image(&image_path)?;
 
-            // Traitement de l'image à tester
-            let image_features = process_image(&image_path)?;
-
-            // Faire une prédiction
-            let prediction = predict_linear_model_classification(&w, &image_features);
+        // Faire une prédiction
+        let prediction = predict_linear_model_classification(&w, &image_features);
 
 
-            // Afficher le résultat
-            if prediction == 1 {
-                result.push(target_List[i].to_string());
-            } else {
-                result.push(non_target_List[i].to_string());
-            }
-
+        // Afficher le résultat
+        if prediction == 1 {
+            result.push(target_List[predict_category].to_string());
+        } else {
+            result.push("Image inconue".to_string());
         }
 
 
@@ -346,7 +357,7 @@ pub(crate) fn main() -> io::Result<()> {
         }
 
         for i in 0..weights_file_path_List.len() {
-            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), non_target_List[i].to_string()).expect("Erreur lors de la création du graphique");
+            plot_errors(&train_errors[i], &test_errors[i], i as i32, target_List[i].to_string(), format!("({0} | {1})", non_target_List[i][0].to_string(), non_target_List[i][1].to_string())).expect("Erreur lors de la création du graphique");
         }
 
 
