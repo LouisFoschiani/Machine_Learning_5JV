@@ -165,7 +165,6 @@
         if(mode == "train" )document.getElementById('resultat').textContent = 'Training... ';
         else document.getElementById('resultat').textContent = 'Calcul de la prediction...';
 
-        let prediction_linear = "";
         fetch('http://127.0.0.1:5000/run_algo', {
             method: 'POST',
             headers: {
@@ -181,7 +180,7 @@
 
                     if(data.model == "linear_model"){
                         if(data.prediction == 1) prediction = categoryText;
-                        else prediction = "Mauvaise prediction";
+                        else prediction = "Image inconnue";
                     }
                     if(data.model == "mlp_model"){
                         if(data.prediction == 2) prediction = "Tomate";

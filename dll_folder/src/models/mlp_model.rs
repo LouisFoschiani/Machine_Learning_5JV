@@ -216,13 +216,7 @@ impl MLP {
 
 
 
-fn plot_errors_mlp(
-    train_errors: &Vec<f32>,
-    test_errors: &Vec<f32>,
-    index: i32,
-    target: String,
-    nonTarget: String
-) -> Result<(), Box<dyn std::error::Error>> {
+fn plot_errors_mlp(train_errors: &Vec<f32>, test_errors: &Vec<f32>) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("Stats MLP.png");
     let title = "Training and Test Errors Over Iteration";
@@ -252,6 +246,7 @@ fn plot_errors_mlp(
     chart.configure_series_labels().border_style(&BLACK).draw()?;
     Ok(())
 }
+
 
 
 
@@ -308,12 +303,13 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     let test_data = load_images("..\\images_16\\Test").expect("Erreur lors du chargement des images de test");
     let taille_image = training_data[0].0.len();
 
-    let mut mlp = MLP::new(vec![taille_image, 75, 15, 3]);
+    // taille image, couche d'entrée, couche cachée, sortie
+    let mut mlp = MLP::new(vec![taille_image, 768, 48, 3]);
 
     let mut lastPerf = 0.0;
 
     if should_train {
-        for iter in 0..250{
+        for iter in 0..500{
 
             mlp.train(&training_data, 0.001, iter);
             let result = evaluate_model(&mut mlp, &test_data, true);
@@ -341,13 +337,9 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     let target_category: String = "Tomate".to_string();
     let non_target_category: String = "Orange".to_string();
 
-    plot_errors_mlp(
-        &mlp.train_errors,
-        &mlp.test_errors,
-        index_value,
-        target_category,
-        non_target_category,
-    ).expect("Error generating image");
+    plot_errors_mlp(&mlp.train_errors, &mlp.test_errors).expect("Error generating image");
+
+
     Ok(())
 
 }

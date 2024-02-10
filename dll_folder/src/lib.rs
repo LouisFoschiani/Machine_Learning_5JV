@@ -28,7 +28,11 @@ cd ..; cargo build --release; if ($?) { cd src; python app.py }
 */
 
 
-
+fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
+    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
+    fs::write("prediction.json", prediction_data)?;
+    Ok(())
+}
 
 #[derive(Deserialize)]
 struct Config {

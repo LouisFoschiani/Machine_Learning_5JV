@@ -1,8 +1,4 @@
-fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
-    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
-    fs::write("prediction.json", prediction_data)?;
-    Ok(())
-}
+
 fn plot_errors_linear(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("index-{}.png", index);

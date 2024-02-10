@@ -1,1 +1,1 @@
-{"model": "-- Select Model --", "mode": "predict", "category": 2}
+{"model": "mlp_model", "mode": "train", "category": 2}
