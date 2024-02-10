@@ -1,4 +1,8 @@
-
+fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
+    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
+    fs::write("prediction.json", prediction_data)?;
+    Ok(())
+}
 fn plot_errors_linear(train_errors: &Vec<f32>, test_errors: &Vec<f32>, index: i32, target: String, nonTarget: String) -> Result<(), Box<dyn std::error::Error>> {
 
     let name = format!("index-{}.png", index);
@@ -176,11 +180,7 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
     (rows_x_len as i32, cols_x_len as i32, rows_w_len as i32)
 }
 
-fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
-    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
-    fs::write("prediction.json", prediction_data)?;
-    Ok(())
-}
+
 
 pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
@@ -191,7 +191,7 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
     let predict_category = category;
 
-    let iterations = 150;
+    let iterations = 3;
 
     let mut weights_file_path_List: Vec<String> = Vec::new();
     weights_file_path_List.push("linear_model_weights_0.txt".to_string());

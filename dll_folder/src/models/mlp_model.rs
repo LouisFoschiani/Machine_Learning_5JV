@@ -190,7 +190,7 @@ impl MLP {
             .map_err(|e| e.to_string())?;
         let pixels: Vec<f32> = Self::image_to_pixels(&img);
         let predicted_index = self.predict(pixels);
-        save_prediction_to_file("mlp_model", predicted_index);
+        save_prediction_to_file("mlp_model", predicted_index as i32);
         categories.get(predicted_index)
             .map(|&category| category.to_string())
             .ok_or("Catégorie non trouvée".to_string())
@@ -294,11 +294,7 @@ fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest :
     return accuracy;
 }
 
-fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result<()> {
-    let prediction_data = format!("{{\"model\": \"{}\", \"prediction\": \"{}\"}}", model_name, prediction);
-    fs::write("prediction.json", prediction_data)?;
-    Ok(())
-}
+
 
 pub fn run_mlp_model(mode: &str) -> io::Result<()> {
 
@@ -331,7 +327,7 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     }else {
         mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
         let categories = ["Aubergine", "Orange", "Tomato"];
-        let img_path = "..\\images_16\\CHECK\\Orange\\orange3.jpg"; // Mettez ici le chemin de votre image de test
+        let img_path = "..\\images_16\\CHECK\\Aubergine\\aubergine1.jpg"; // Mettez ici le chemin de votre image de test
         let result = mlp.predict_image(img_path, &categories);
 
         match result {

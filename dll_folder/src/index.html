@@ -161,6 +161,10 @@
         const category = parseInt(document.getElementById('modelSelectCategory').value, 10);
         const categoryElement = document.getElementById('modelSelectCategory');
         const categoryText = categoryElement.options[categoryElement.selectedIndex].text;
+
+        if(mode == "train" )document.getElementById('resultat').textContent = 'Training... ';
+        else document.getElementById('resultat').textContent = 'Calcul de la prediction...';
+
         let prediction_linear = "";
         fetch('http://127.0.0.1:5000/run_algo', {
             method: 'POST',
@@ -172,12 +176,25 @@
         })
             .then(response => response.json())
             .then(data => {
-                if(data.model == "linear_model"){
-                    if(data.prediction == 1) prediction_linear = categoryText;
-                    else prediction_linear = "Mauvaise prediction";
+                console.log(mode);
+                if(mode =="predict"){
+
+                    if(data.model == "linear_model"){
+                        if(data.prediction == 1) prediction = categoryText;
+                        else prediction = "Mauvaise prediction";
+                    }
+                    if(data.model == "mlp_model"){
+                        if(data.prediction == 2) prediction = "Tomate";
+                        else if (data.prediction == 1)prediction = "Orange";
+                        else prediction = "Aubergine";
+                    }
+
                 }
-                console.log(data.prediction)
-                document.getElementById('resultat').textContent = 'Prediction : ' + prediction_linear;
+                else{
+                    prediction =  "Training";
+                }
+
+                document.getElementById('resultat').textContent = 'Prediction : ' + prediction;
             })
 
                 .catch(error => console.error('Erreur:', error));
@@ -189,7 +206,6 @@
     });
 
     function selectLinear(selected){
-        console.log("here");
         if(selected){
             var element = document.getElementById("modelSelectCategory");
             element.classList.remove("hidden_div");
