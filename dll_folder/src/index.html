@@ -187,7 +187,11 @@
                         else if (data.prediction == 1)prediction = "Orange";
                         else prediction = "Aubergine";
                     }
-
+                    if(data.model == "rbfn_model"){
+                        if(data.prediction == 2) prediction = "Tomate";
+                        else if (data.prediction == 1)prediction = "Orange";
+                        else prediction = "Aubergine";
+                    }
                 }
                 else{
                     prediction =  "Training";

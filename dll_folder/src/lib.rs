@@ -1,12 +1,12 @@
 
 include!("models/linear_model.rs");
 include!("models/mlp_model.rs");
+include!("models/rbfn_model.rs");
 extern crate image;
 extern crate rand;
 
 use std::collections::HashMap;
 use image::{DynamicImage, GenericImageView, ImageError};
-use rand::Rng;
 use rand::distributions::{Distribution, Uniform};
 use plotters::prelude::*;
 use plotters::backend::BitMapBackend;
@@ -16,13 +16,17 @@ use plotters::prelude::*;
 use std::{fs, iter, path::Path};
 use std::f32::consts::E;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use serde_json;
 use plotters::prelude::*;
 use std::io::BufReader;
 use std::io::BufRead;
-
 use serde::{Deserialize};
+use ndarray::Array2;
+use rand::{seq::SliceRandom, thread_rng, Rng};
+use std::path::PathBuf;
+
+
 /**
 cd ..; cargo build --release; if ($?) { cd src; python app.py }
 */
@@ -64,6 +68,13 @@ pub extern "C" fn run_algo() {
             match run_mlp_model(config.mode.as_str()) {
                 Ok(_) => println!("MLP Model completed successfully."),
                 Err(e) => println!("MLP Model encountered an error: {}", e),
+            }
+        },
+        "rbfn_model" => {
+            println!("Running RBFN Model Algorithm...");
+            match run_rbfn_model(config.mode.as_str()) {
+                Ok(_) => println!("RBFN Model completed successfully."),
+                Err(e) => println!("RBFN Model encountered an error: {}", e),
             }
         },
         // ...

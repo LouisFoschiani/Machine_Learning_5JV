@@ -1,1 +1,1 @@
-{"model": "mlp_model", "mode": "train", "category": 2}
+{"model": "rbfn_model", "mode": "predict", "category": 2}
