@@ -111,6 +111,21 @@
             font-size: 28px;
             padding: 1%;
         }
+        .loader {
+            border: 16px solid #f3f3f3; /* Light grey */
+            border-top: 16px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+            margin: auto;
+            margin-top: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -124,8 +139,8 @@
 </select>
 
 <select class="hidden_div" id="modelSelectCategory">
-    <option  value=2>Aubergine</option>
-    <option  value=1>Orange</option>
+    <option value=2>Aubergine</option>
+    <option value=1>Orange</option>
     <option value=0>Tomate</option>
 </select>
 
@@ -141,10 +156,25 @@
     </div>
 </div>
 
+<form id="imageForm" class="hidden_div" enctype="multipart/form-data">
+    <input type="file" id="imageInput" name="image" accept="image/*">
+    <button type="button" id="submitImage" class="button">Envoyer Image</button>
+</form>
+<div id="dimensionSelection"class="parent_radio_div hidden_div">
+    <div class="child_radio_div">
+        <input class="radio-group" type="radio" id="size32" name="size" value="32" checked>
+        <label class="label" for="size32">32x32</label>
+    </div>
+    <div class="child_radio_div">
+        <input class="radio-group" type="radio" id="size16" name="size" value="16">
+        <label class="label" for="size16">16x16</label>
+    </div>
+</div>
 
 <button id="loadModel" class="button">Load Model</button>
 <div class="res_prediction" id="resultat"></div>
 <div id="resultat_reload"></div>
+<div class="loader" id="loader" style="display: none;"></div>
 <script>
     /*document.getElementById('reloadServer').addEventListener('click', function() {
         fetch('http://127.0.0.1:5000/reload_dll', { method: 'POST' })
@@ -153,54 +183,85 @@
             .catch(error => console.error('Error:', error));
     });*/
 
+    document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+        radio.addEventListener('change', function() {
+            const predictSelected = document.getElementById('predict').checked;
+            const imageForm = document.getElementById('imageForm');
+            const dimensionSelection = document.getElementById('dimensionSelection');
+
+            if (predictSelected) {
+                imageForm.classList.remove('hidden_div');
+                dimensionSelection.classList.remove('hidden_div');
+            } else {
+                imageForm.classList.add('hidden_div');
+                dimensionSelection.classList.add('hidden_div');
+            }
+        });
+    });
+
+    // Appeler manuellement l'événement change au chargement de la page pour gérer l'état initial
+    document.querySelector('input[name="mode"]:checked').dispatchEvent(new Event('change'));
 
 
-    document.getElementById('loadModel').addEventListener('click', () => {
+    document.getElementById('submitImage').addEventListener('click', function() {
+        const formData = new FormData();
+        const imageFile = document.getElementById('imageInput').files[0];
+        const imageSize = document.querySelector('input[name="size"]:checked').value;
+        formData.append('image', imageFile);
+        formData.append('size', imageSize); // Ajouter la taille d'image sélectionnée
+
+        fetch('http://127.0.0.1:5000/upload_image', {
+            method: 'POST',
+            body: formData,
+        })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => console.error('Error:', error));
+    });
+
+
+    document.getElementById('loadModel').addEventListener('click', async () => { // Ajout de async ici
+        document.getElementById('loader').style.display = 'block';
         const model = document.getElementById('modelSelect').value;
         const mode = document.querySelector('input[name="mode"]:checked').value;
         const category = parseInt(document.getElementById('modelSelectCategory').value, 10);
         const categoryElement = document.getElementById('modelSelectCategory');
         const categoryText = categoryElement.options[categoryElement.selectedIndex].text;
 
-        if(mode == "train" )document.getElementById('resultat').textContent = 'Training... ';
-        else document.getElementById('resultat').textContent = 'Calcul de la prediction...';
+        try {
+            const response = await fetch('http://127.0.0.1:5000/run_algo', { // Utilisation de await
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ model, mode, category }),
+            });
+            const data = await response.json(); // Utilisation de await
 
-        fetch('http://127.0.0.1:5000/run_algo', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            document.getElementById('loader').style.display = 'none';
+            console.log(mode);
+            let prediction = "Training"; // Initialisation par défaut à "Training"
 
-            body: JSON.stringify({model, mode, category}),
-        })
-            .then(response => response.json())
-            .then(data => {
-                console.log(mode);
-                if(mode =="predict"){
-
-                    if(data.model == "linear_model"){
-                        if(data.prediction == 1) prediction = categoryText;
-                        else prediction = "Image inconnue";
-                    }
-                    if(data.model == "mlp_model"){
-                        if(data.prediction == 2) prediction = "Tomate";
-                        else if (data.prediction == 1)prediction = "Orange";
-                        else prediction = "Aubergine";
-                    }
-                    if(data.model == "rbfn_model"){
-                        if(data.prediction == 2) prediction = "Tomate";
-                        else if (data.prediction == 1)prediction = "Orange";
-                        else prediction = "Aubergine";
-                    }
+            if (mode == "predict") {
+                switch(data.model) {
+                    case "linear_model":
+                        prediction = data.prediction == 1 ? categoryText : "Image inconnue";
+                        break;
+                    case "mlp_model":
+                        prediction = data.prediction == 2 ? "Tomate" : data.prediction == 1 ? "Orange" : "Aubergine";
+                        break;
+                    case "rbfn_model":
+                        prediction = data.prediction == 0 ? "Tomate" : data.prediction == 1 ? "Orange" : "Aubergine";
+                        break;
                 }
-                else{
-                    prediction =  "Training";
-                }
+            }
 
-                document.getElementById('resultat').textContent = 'Prediction : ' + prediction;
-            })
-
-                .catch(error => console.error('Erreur:', error));
+            document.getElementById('resultat').textContent = 'Prediction : ' + prediction;
+        } catch (error) {
+            console.error('Erreur:', error);
+            document.getElementById('loader').style.display = 'none';
+            document.getElementById('resultat').textContent = 'Erreur lors de la prédiction';
+        }
     });
 
     document.getElementById('modelSelect').addEventListener('change', function() {

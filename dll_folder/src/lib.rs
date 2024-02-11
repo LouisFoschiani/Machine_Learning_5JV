@@ -37,7 +37,6 @@ fn save_prediction_to_file(model_name: &str, prediction: i32) -> std::io::Result
     fs::write("prediction.json", prediction_data)?;
     Ok(())
 }
-
 #[derive(Deserialize)]
 struct Config {
     model: String,
@@ -54,25 +53,26 @@ pub extern "C" fn run_algo() {
     let config: Config = serde_json::from_str(&config_contents).expect("Failed to parse config");
     println!("Model: {}, Mode: {}, Category: {}", config.model, config.mode, config.category);
     let algorithm_choice = config.model;
+    let image_path = Path::new("C:\\Users\\Louis\\Documents\\GitHub\\Machine_Learning_5JV\\dll_folder\\src\\image_predict\\Image_Test_Prediction.png");
 
     match algorithm_choice.as_str() {
         "linear_model" => {
             println!("Running Linear Model Algorithm...");
-            match run_linear_model(config.mode.as_str(),config.category) {
+            match run_linear_model(config.mode.as_str(), config.category, &image_path) {
                 Ok(_) => println!("Linear Model completed successfully."),
                 Err(e) => println!("Linear Model encountered an error: {}", e),
             }
         },
         "mlp_model" => {
             println!("Running MLP Model Algorithm...");
-            match run_mlp_model(config.mode.as_str()) {
+            match run_mlp_model(config.mode.as_str(), &image_path) {
                 Ok(_) => println!("MLP Model completed successfully."),
                 Err(e) => println!("MLP Model encountered an error: {}", e),
             }
         },
         "rbfn_model" => {
             println!("Running RBFN Model Algorithm...");
-            match run_rbfn_model(config.mode.as_str()) {
+            match run_rbfn_model(config.mode.as_str(), &image_path) {
                 Ok(_) => println!("RBFN Model completed successfully."),
                 Err(e) => println!("RBFN Model encountered an error: {}", e),
             }

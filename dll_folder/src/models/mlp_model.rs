@@ -291,7 +291,7 @@ fn evaluate_model(mlp: &mut MLP, test_data: &Vec<(Vec<f32>, Vec<f32>)>, isTest :
 
 
 
-pub fn run_mlp_model(mode: &str) -> io::Result<()> {
+pub fn run_mlp_model(mode: &str, image_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     let should_train;
 
@@ -304,7 +304,7 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     let taille_image = training_data[0].0.len();
 
     // taille image, couche d'entrée, couche cachée, sortie
-    let mut mlp = MLP::new(vec![taille_image, 768,96,64, 12, 3]);
+    let mut mlp = MLP::new(vec![taille_image, 768, 8, 3]);
 
     let mut lastPerf = 0.0;
 
@@ -324,8 +324,10 @@ pub fn run_mlp_model(mode: &str) -> io::Result<()> {
     }else {
         mlp.load_weights("model_weights_mlp.json").expect("Erreur lors du chargement des poids");
         let categories = ["Aubergine", "Orange", "Tomato"];
-        let img_path = "..\\images_16\\CHECK\\Aubergine\\aubergine1.jpg"; // Mettez ici le chemin de votre image de test
-        let result = mlp.predict_image(img_path, &categories);
+        let image_path = Path::new(image_path);
+        let image_path_str = image_path.to_string_lossy();
+        let result = mlp.predict_image(&image_path_str, &categories);
+
 
         match result {
             Ok(category) => println!("Catégorie prédite : {}", category),

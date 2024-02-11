@@ -178,7 +178,7 @@ fn set_var(x: &Vec<Vec<f32>>) -> (i32, i32, i32) {
 
 
 
-pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
+fn run_linear_model(mode: &str, category: usize, image_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     let CHECK;
 
@@ -187,7 +187,7 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
     let predict_category = category;
 
-    let iterations = 3;
+    let iterations = 150;
 
     let mut weights_file_path_List: Vec<String> = Vec::new();
     weights_file_path_List.push("linear_model_weights_0.txt".to_string());
@@ -220,8 +220,9 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
         let mut result: Vec<String> = Vec::new();
 
-        let image_path = Path::new("..\\images_32\\CHECK\\Aubergine\\aubergine1.jpg");
+        let image_path = Path::new(image_path);
 
+        println!("'{}'", image_path.display());
 
 
         let (train_features, _) = load_image_data(base_training_path, &target_List[predict_category], &non_target_List[predict_category])?;
@@ -297,10 +298,12 @@ pub fn run_linear_model(mode: &str, category:usize) -> io::Result<()> {
 
                 let mut final_result = 0;
 
-                for i in 0..rowsXLen {
-                    let result = predict_linear_model_classification(&w, &train_features[i as usize]);
-                    if result == train_labels[i as usize] {
-                        final_result += 1
+                for i in 0..rowsXLen as usize {
+                    if i < train_features.len() && i < train_labels.len() {
+                        let result = predict_linear_model_classification(&w, &train_features[i]);
+                        if result == train_labels[i] {
+                            final_result += 1;
+                        }
                     }
                 }
                 println!("Training Result : {} / {} = {}%", final_result, train_labels.len(), final_result as f32 / train_labels.len() as f32 * 100.0);
