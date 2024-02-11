@@ -61,7 +61,7 @@ def upload_image():
         # Récupérer la taille d'image sélectionnée
         image_size = request.form.get('size', '16') # Utiliser '16' comme valeur par défaut
         is32 = True if image_size == '32' else False
-    
+
         # Appeler la fonction de redimensionnement avec la taille correcte
         resize_images_in_directory(folder_path, is32)
         rename_files_in_directory(folder_path)
